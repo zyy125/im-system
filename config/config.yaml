@@ -1,6 +1,6 @@
 jwt:
   secret: "123456"
-  expires: 24
+  expiry: 24
 
 redis:
   addr: "localhost:6379"

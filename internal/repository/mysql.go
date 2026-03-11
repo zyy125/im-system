@@ -7,20 +7,26 @@ import (
 	"github.com/zyy125/im-system/internal/model"
 )
 
-var DB *gorm.DB
-
-func InitDB(dsn string) {
+func InitDB(dsn string) (*gorm.DB, error) {
 	var err error
 
-	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 
 	if err != nil {
 		log.Fatalf("MySQL connection failed: %v", err)
 	}
 
-	if err = DB.AutoMigrate(model.User{}); err != nil {
+	if err = AutoMigrate(db); err != nil {
 		log.Fatalf("MySQL auto migration failed: %v", err)
 	}
-
 	log.Println("MySQL connection and auto migration successful")
+
+	return db, nil
 }
+
+func AutoMigrate(db *gorm.DB) error {
+	return db.AutoMigrate(&model.User{})
+}
+
+
+

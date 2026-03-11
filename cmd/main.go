@@ -1,20 +1,33 @@
+// @title IM System API
+// @version 1.0
+// @description This is a IM System API.
+// @host localhost:8080
+// @BasePath /
+
+// JWT认证
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/zyy125/im-system/internal/repository"
+	"log"
+
+	"github.com/zyy125/im-system/config"
+	"github.com/zyy125/im-system/internal/app"
 )
 
 func main() {
-	dsn := "root:123456@tcp(127.0.0.1:3306)/im_db?charset=utf8mb4&parseTime=True&loc=Local"
-	repository.InitDB(dsn)
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
 
-	r := gin.Default()
-	r.GET("/ping", func (c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
-	})
+	app, err := app.InitApp(cfg)
+	if err != nil {
+		log.Fatalf("Error initializing app: %v", err)
+	}
 
-	r.Run(":8080")
+	app.Router.Run(":8080")
 }

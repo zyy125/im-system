@@ -4,24 +4,30 @@ import (
 	"context"
 	"strconv"
 	"time"
+	"errors"
 
 	"github.com/zyy125/im-system/config"
 	"github.com/zyy125/im-system/internal/model"
 	"github.com/zyy125/im-system/internal/repository"
 	"github.com/zyy125/im-system/pkg/jwt"
 	"github.com/zyy125/im-system/pkg/utils"
+	"gorm.io/gorm"
 )
 
 type UserService struct {
-	userRepo *repository.UserRepo
+	userRepo repository.UserRepo
 	jwtCfg  *config.JWT
+	tokenBlacklistRepo repository.TokenBlacklistRepo
 }
 
-func NewUserService(userRepo *repository.UserRepo, jwtCfg *config.JWT) *UserService {
-	return &UserService{userRepo: userRepo, jwtCfg: jwtCfg}
+func NewUserService(userRepo repository.UserRepo, jwtCfg *config.JWT, tokenBlacklistRepo repository.TokenBlacklistRepo) *UserService {
+	return &UserService{userRepo: userRepo, jwtCfg: jwtCfg, tokenBlacklistRepo: tokenBlacklistRepo}
 }
 
 func (s *UserService) Register(ctx context.Context, username string, pwd string) error {
+	if username == "" || pwd == "" {
+		return errors.New("username or password is empty")
+	}
 	hash, err := utils.HashPassword(pwd)
 	if err != nil {
 		return err
@@ -38,6 +44,9 @@ func (s *UserService) Register(ctx context.Context, username string, pwd string)
 func (s *UserService) Login(ctx context.Context, username string, pwd string) (string, error) {
 	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", errors.New("user not found")
+		}
 		return "", err
 	}
 
@@ -51,4 +60,12 @@ func (s *UserService) Login(ctx context.Context, username string, pwd string) (s
 	}
 
 	return token, nil
+}
+
+func (s *UserService) Logout(ctx context.Context, jti string) error {
+	if err := s.tokenBlacklistRepo.Blacklist(ctx, jti); err != nil {
+		return err
+	}
+
+	return nil
 }

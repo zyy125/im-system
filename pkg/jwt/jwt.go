@@ -34,7 +34,7 @@ func GenerateJWT(userID string, secret string, expiry time.Duration) (string, st
 	return tokenString, jti, nil
 }
 
-func ParseToken(tokenString string, secret string) (*Claims, error) {
+func ParseJWT(tokenString string, secret string) (*Claims, error) {
 	claims := &Claims{}
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{"HS256"}))
 	token, err := parser.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {

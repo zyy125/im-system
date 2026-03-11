@@ -2,7 +2,6 @@ package response
 
 import (
 	"github.com/gin-gonic/gin"
-	"net/http"
 )
 
 type Response struct {
@@ -11,9 +10,9 @@ type Response struct {
 	Data    any `json:"data"`
 }
 
-func Success(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, Response{
-		Code:    http.StatusOK,
+func Success(c *gin.Context,code int, data any) {
+	c.JSON(code, Response{
+		Code:    code,
 		Message: "success",
 		Data:    data,
 	})

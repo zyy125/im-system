@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zyy125/im-system/internal/repository"
@@ -27,15 +26,9 @@ func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistR
 			return
 		}
 
-		claims, err := jwt.ParseToken(token, secret)
+		claims, err := jwt.ParseJWT(token, secret)
 		if err != nil {
 			response.Fail(c, http.StatusUnauthorized, "token is invalid")
-			c.Abort()
-			return
-		}
-
-		if claims.ExpiresAt != nil && time.Now().After(claims.ExpiresAt.Time) {
-			response.Fail(c, http.StatusUnauthorized, "token is expired")
 			c.Abort()
 			return
 		}

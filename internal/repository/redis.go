@@ -7,11 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type RedisClient struct {
-	Client *redis.Client
-}
-
-func InitRedisClient(ctx context.Context, addr, password string, db int) *RedisClient {
+func InitRedisClient(ctx context.Context, addr, password string, db int) (*redis.Client, error) {
 	rdb := redis.NewClient(
 		&redis.Options{
 			Addr:     addr,
@@ -23,12 +19,12 @@ func InitRedisClient(ctx context.Context, addr, password string, db int) *RedisC
 	)
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Redis ping failed: %v", err)
+		return nil, err
 	}
 	
 	log.Println("Redis client initialized")
 
-	return &RedisClient{Client: rdb}
+	return rdb, nil
 }
 
 
