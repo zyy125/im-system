@@ -11,6 +11,8 @@ type TokenBlacklistRepo interface {
     Blacklist(ctx context.Context, jti string) error
 }
 
+var _ TokenBlacklistRepo = (*tokenBlacklistRepo)(nil)
+
 // internal/repository/token_blacklist.go
 type tokenBlacklistRepo struct {
     Rdb *redis.Client
@@ -26,3 +28,4 @@ func (r *tokenBlacklistRepo) IsBlacklisted(ctx context.Context, jti string) (boo
 func (r *tokenBlacklistRepo) Blacklist(ctx context.Context, jti string) error {
     return r.Rdb.SAdd(ctx, "jwt:blacklist", jti).Err()
 }
+

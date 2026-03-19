@@ -1,23 +1,24 @@
 package repository
 
 import (
-	"gorm.io/gorm"
-	"gorm.io/driver/mysql"
 	"log"
+
 	"github.com/zyy125/im-system/internal/model"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-func InitDB(dsn string) (*gorm.DB, error) {
+func NewMysql(dsn string) (*gorm.DB, error) {
 	var err error
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 
 	if err != nil {
-		log.Fatalf("MySQL connection failed: %v", err)
+		return nil, err
 	}
 
 	if err = AutoMigrate(db); err != nil {
-		log.Fatalf("MySQL auto migration failed: %v", err)
+		return nil, err
 	}
 	log.Println("MySQL connection and auto migration successful")
 
@@ -25,8 +26,5 @@ func InitDB(dsn string) (*gorm.DB, error) {
 }
 
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&model.User{})
+	return db.AutoMigrate(&model.User{}, &model.ChatMsg{})
 }
-
-
-

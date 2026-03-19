@@ -7,7 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func InitRedisClient(ctx context.Context, addr, password string, db int) (*redis.Client, error) {
+func NewRedisClient(ctx context.Context, addr, password string, db int) (*redis.Client, error) {
 	rdb := redis.NewClient(
 		&redis.Options{
 			Addr:     addr,

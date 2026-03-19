@@ -13,6 +13,7 @@ package main
 
 import (
 	"log"
+	"context"
 
 	"github.com/zyy125/im-system/config"
 	"github.com/zyy125/im-system/internal/app"
@@ -24,7 +25,10 @@ func main() {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-	app, err := app.InitApp(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	app, err := app.InitApp(cfg, ctx)
 	if err != nil {
 		log.Fatalf("Error initializing app: %v", err)
 	}

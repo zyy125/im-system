@@ -9,6 +9,7 @@ type Config struct {
 	Mysql Mysql `mapstructure:"mysql"`
 	Redis Redis `mapstructure:"redis"`
 	JWT   JWT   `mapstructure:"jwt"`
+	RabbitMQ RabbitMQ `mapstructure:"rabbitmq"`
 }
 
 type Mysql struct {
@@ -24,6 +25,10 @@ type Redis struct {
 type JWT struct {
 	Secret string `mapstructure:"secret"`
 	Expiry int64  `mapstructure:"expiry"`
+}
+
+type RabbitMQ struct {
+	URL string `mapstructure:"url"`
 }
 
 func LoadConfig() (*Config, error) {

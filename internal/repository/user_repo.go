@@ -16,6 +16,8 @@ type userRepo struct {
 	db *gorm.DB
 }
 
+var _ UserRepo = (*userRepo)(nil)
+
 func NewUserRepo(db *gorm.DB) *userRepo {
 	return &userRepo{db: db}
 }
@@ -27,3 +29,4 @@ func (r *userRepo) Create(ctx context.Context, user *model.User) error {
 func (r *userRepo) GetByUsername(ctx context.Context, username string) (model.User, error) {
 	return gorm.G[model.User](r.db).Where("username = ?", username).First(ctx)
 }
+

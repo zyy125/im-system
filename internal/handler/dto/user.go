@@ -1,16 +1,6 @@
 package dto
 
-type UserRegisterReq struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
+type CheckUserOnlineRes struct {
+	UserID uint64 `json:"userID"`
+	Online bool   `json:"online"`
 }
-
-type UserLoginReq struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required"`
-}
-
-type UserLoginResp struct {
-	Token string `json:"token"`
-}
-

@@ -14,7 +14,10 @@ import (
 )
 
 type InitRouterParams struct {
+	AuthHandler *handler.AuthHandler
+	WsHandler *handler.WsHandler
 	UserHandler *handler.UserHandler
+		
 	BlacklistRepo repository.TokenBlacklistRepo
 	JwtCfg *config.JWT
 }
@@ -27,21 +30,29 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	}
 
-	userHandler := params.UserHandler
+	authHandler := params.AuthHandler
 	blacklistRepo := params.BlacklistRepo
 	jwtCfg := params.JwtCfg
-
-	api := r.Group("/api")
+	wsHandler := params.WsHandler
+	userHandler := params.UserHandler
+		
+	api := r.Group("/api/v1")
 	{
-		users := api.Group("/users")
+		auth := api.Group("/auth")
 		{
-			users.POST("/register", userHandler.Register)
-			users.POST("/login", userHandler.Login)
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/logout", authHandler.Logout, middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
+		}
 
-			auth := users.Group("/auth", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
-			{
-				auth.POST("/logout", userHandler.Logout)
-			}
+		user := api.Group("/user", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
+		{
+			user.GET("/online", userHandler.CheckUserOnline)
+		}
+
+		ws := api.Group("/ws", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
+		{
+			ws.GET("/", wsHandler.HandleWs)
 		}
 	}
 	

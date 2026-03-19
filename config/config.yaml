@@ -9,3 +9,6 @@ redis:
 
 mysql:
   dsn: "root:123456@tcp(localhost:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
+
+rabbitmq:
+  url: "amqp://guest:guest@localhost:5672/"

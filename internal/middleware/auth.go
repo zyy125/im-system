@@ -47,7 +47,7 @@ func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistR
 			return
 		}
 
-		uid, _ := strconv.ParseInt(claims.UserID, 10, 64)
+		uid, _ := strconv.ParseUint(claims.UserID, 10, 64)
 		if uid <= 0 {
 			response.Fail(c, http.StatusUnauthorized, "token is invalid")
 			c.Abort()
