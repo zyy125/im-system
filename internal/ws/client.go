@@ -2,13 +2,11 @@ package ws
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/zyy125/im-system/internal/model"
-	"github.com/zyy125/im-system/internal/mq"
+	"github.com/zyy125/im-system/internal/apperr"
 )
 
 var (
@@ -19,12 +17,11 @@ var (
 )
 
 type Client struct {
-	UserID uint64          `json:"user_id"`
-	Conn   *websocket.Conn `json:"conn"`
-	Send   chan []byte     `json:"send"`
-	Hub    *Hub            `json:"hub"`
-	Ctx    context.Context `json:"ctx"`
-	Mq     *mq.RabbitMQ    `json:"mq"`
+	UserID      uint64          `json:"user_id"`
+	Conn        *websocket.Conn `json:"conn"`
+	Send        chan []byte     `json:"send"`
+	Hub         *Hub            `json:"hub"`
+	ChatHandler ChatSendHandler `json:"-"`
 }
 
 func (c *Client) ReadPump(ctx context.Context) {
@@ -46,27 +43,48 @@ func (c *Client) ReadPump(ctx context.Context) {
 			log.Printf("Client %d read message error: %v", c.UserID, err)
 			break
 		}
-		//异步存入RabbitMQ
-		go func() {
-			if err = c.Mq.PublishChatMsg(ctx, message); err != nil {
-				log.Printf("Client %d publish message error: %v", c.UserID, err)
-			}
-		}()
 
-		var chatMsg model.ChatMsg
-		if err = json.Unmarshal(message, &chatMsg); err != nil {
-			log.Printf("Client %d unmarshal message error: %v", c.UserID, err)
+		req, err := DecodeClientChatSend(message)
+		if err != nil {
+			log.Printf("Client %d decode client message error: %v", c.UserID, err)
+			c.writeError(err)
 			continue
 		}
-		select {
-		case c.Hub.Forward <- &ForwardMsg{
-			To:      chatMsg.To,
-			From:    c.UserID,
-			Content: []byte(chatMsg.Content),
-		}:
-		default:
-			log.Printf("Client %d forward message error: %v", c.UserID, err)
+		if c.ChatHandler == nil {
+			err := apperr.Internal("chat handler unavailable", nil)
+			log.Printf("Client %d chat handler unavailable", c.UserID)
+			c.writeError(err)
+			continue
 		}
+		forwardMsg, err := c.ChatHandler.HandleChatSend(ctx, c.UserID, req)
+		if err != nil {
+			log.Printf("Client %d handle chat send error: %v", c.UserID, err)
+			c.writeError(err)
+			continue
+		}
+
+		select {
+		case c.Hub.Forward <- forwardMsg:
+		default:
+			log.Printf("Client %d forward message dropped", c.UserID)
+		}
+	}
+}
+
+func (c *Client) writeError(err error) {
+	appErr := apperr.From(err)
+	payload, marshalErr := MarshalEnvelope(EventTypeError, ErrorData{
+		Code:    string(appErr.Code),
+		Message: appErr.Message,
+	})
+	if marshalErr != nil {
+		log.Printf("Client %d marshal error payload failed: %v", c.UserID, marshalErr)
+		return
+	}
+	select {
+	case c.Send <- payload:
+	default:
+		log.Printf("Client %d error payload dropped: send queue full", c.UserID)
 	}
 }
 
@@ -82,22 +100,30 @@ func (c *Client) WritePump(ctx context.Context) {
 		select {
 		case message, ok := <-c.Send:
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.writeMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			if err := c.writeMessage(websocket.TextMessage, message); err != nil {
 				log.Printf("Client %d write message error: %v", c.UserID, err)
 				return
 			}
 
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.Conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+			if err := c.writeMessage(websocket.PingMessage, []byte{}); err != nil {
 				log.Printf("Client %d write ping message error: %v", c.UserID, err)
 				return
 			}
 		}
 	}
+}
+
+func (c *Client) writeMessage(messageType int, payload []byte) error {
+	if c.Conn == nil {
+		return nil
+	}
+	if err := c.Conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+		return err
+	}
+	return c.Conn.WriteMessage(messageType, payload)
 }

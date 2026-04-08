@@ -10,8 +10,8 @@ import (
 func TestParseJWT(t *testing.T) {
 
 	tests := []struct {
-		name string
-		secret string
+		name      string
+		secret    string
 		expectErr bool
 	}{
 		{"correct secret", "test-secret", false},

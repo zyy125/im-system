@@ -1,14 +1,15 @@
 package config
 
-import(
-	"github.com/spf13/viper"
+import (
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Mysql Mysql `mapstructure:"mysql"`
-	Redis Redis `mapstructure:"redis"`
-	JWT   JWT   `mapstructure:"jwt"`
+	Mysql    Mysql    `mapstructure:"mysql"`
+	Redis    Redis    `mapstructure:"redis"`
+	JWT      JWT      `mapstructure:"jwt"`
 	RabbitMQ RabbitMQ `mapstructure:"rabbitmq"`
 }
 
@@ -37,7 +38,6 @@ func LoadConfig() (*Config, error) {
 	viper.AddConfigPath("./config")
 	viper.AddConfigPath(".")
 
-
 	viper.SetEnvPrefix("IM")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
@@ -53,4 +53,3 @@ func LoadConfig() (*Config, error) {
 
 	return &cfg, nil
 }
-

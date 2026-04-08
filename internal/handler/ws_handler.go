@@ -1,24 +1,35 @@
 package handler
 
-import(
-	"net/http"
+import (
+	"context"
 	"log"
+	"net/http"
 
-
-	"github.com/zyy125/im-system/pkg/response"
-	"github.com/zyy125/im-system/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/zyy125/im-system/internal/mq"
+	"github.com/zyy125/im-system/internal/service"
+	"github.com/zyy125/im-system/internal/ws"
 )
 
-type WsHandler struct {
-	hub *ws.Hub
-	mq  *mq.RabbitMQ
+type WSHandler struct {
+	hub                 *ws.Hub
+	messageService      service.MessageService
+	friendService       service.FriendService
+	conversationService service.ConversationService
 }
 
-func NewWsHandler(hub *ws.Hub, mq *mq.RabbitMQ) *WsHandler {
-	return &WsHandler{hub: hub, mq: mq}
+func NewWSHandler(
+	hub *ws.Hub,
+	messageService service.MessageService,
+	friendService service.FriendService,
+	conversationService service.ConversationService,
+) *WSHandler {
+	return &WSHandler{
+		hub:                 hub,
+		messageService:      messageService,
+		friendService:       friendService,
+		conversationService: conversationService,
+	}
 }
 
 var upgrader = websocket.Upgrader{
@@ -27,28 +38,39 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (h *WsHandler) HandleWs(c *gin.Context) {
-	userID := c.GetUint64("userID")
+// HandleWS 建立 WebSocket 连接
+// @Summary 建立 WebSocket 连接
+// @Description 建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送
+// @Tags WebSocket
+// @Produce plain
+// @Security BearerAuth
+// @Success 101 {string} string "Switching Protocols"
+// @Failure 401 {object} response.Response "未认证"
+// @Failure 500 {object} response.Response "升级连接失败"
+// @Router /api/v1/ws/ [get]
+func (h *WSHandler) HandleWS(c *gin.Context) {
+	userID := currentUserID(c)
 	log.Printf("Client %d connect", userID)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		response.Fail(c, http.StatusInternalServerError, err.Error())
+		respondError(c, err)
 		return
 	}
-	ctx := c.Request.Context()
+	// WebSocket 连接是长连接，c.Request.Context() 在 Upgrade 完成后就会被取消
+	// 这里使用 context.Background()，并在 client 结构中统一管理
+	ctx := context.Background()
 
 	client := &ws.Client{
-		UserID: userID,
-		Conn: conn,
-		Ctx: ctx,
-		Send: make(chan []byte, 256),
-		Hub: h.hub,
-		Mq: h.mq,
+		UserID:      userID,
+		Conn:        conn,
+		Send:        make(chan []byte, 256),
+		Hub:         h.hub,
+		ChatHandler: ws.NewChatSendHandler(h.messageService, h.friendService, h.conversationService),
 	}
 
+	go client.WritePump(ctx)
 	h.hub.Register <- client
 
-	go client.WritePump(ctx)
 	go client.ReadPump(ctx)
 }

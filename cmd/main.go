@@ -12,8 +12,8 @@
 package main
 
 import (
-	"log"
 	"context"
+	"log"
 
 	"github.com/zyy125/im-system/config"
 	"github.com/zyy125/im-system/internal/app"
@@ -33,5 +33,7 @@ func main() {
 		log.Fatalf("Error initializing app: %v", err)
 	}
 
-	app.Router.Run(":8080")
+	if err := app.Router.Run(":8080"); err != nil {
+		log.Fatalf("Error running app: %v", err)
+	}
 }

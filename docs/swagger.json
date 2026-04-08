@@ -9,7 +9,71 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
-        "/api/users/auth/logout": {
+        "/api/v1/auth/login": {
+            "post": {
+                "description": "用户登录，返回JWT token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "用户登录",
+                "parameters": [
+                    {
+                        "description": "用户登录请求",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UserLoginReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "登录成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.UserLoginResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数校验错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "用户名或密码错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout": {
             "post": {
                 "security": [
                     {
@@ -31,73 +95,27 @@
                     "200": {
                         "description": "登出成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
-                    "400": {
-                        "description": "参数校验错误",
+                    "401": {
+                        "description": "未认证",
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "内部服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/users/login": {
-            "post": {
-                "description": "用户登录，返回JWT token",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户"
-                ],
-                "summary": "用户登录",
-                "parameters": [
-                    {
-                        "description": "用户登录请求",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_internal_handler_dto.UserLoginReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "登录成功",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "参数校验错误",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "500": {
                         "description": "内部服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
+                            "$ref": "#/definitions/response.Response"
                         }
                     }
                 }
             }
         },
-        "/api/users/register": {
+        "/api/v1/auth/register": {
             "post": {
-                "description": "用户注册，返回JWT token",
+                "description": "用户注册",
                 "consumes": [
                     "application/json"
                 ],
@@ -115,7 +133,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_internal_handler_dto.UserRegisterReq"
+                            "$ref": "#/definitions/dto.UserRegisterReq"
                         }
                     }
                 ],
@@ -123,19 +141,972 @@
                     "201": {
                         "description": "注册成功",
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "400": {
                         "description": "参数校验错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "用户名已存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "500": {
                         "description": "内部服务器错误",
                         "schema": {
-                            "$ref": "#/definitions/github_com_zyy125_im-system_pkg_response.Response"
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前用户可见的会话列表、未读数和最近一条消息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "获取会话列表",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.ConversationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/direct/{id}/open": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "与指定好友打开或恢复单聊会话",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "打开单聊会话",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "好友用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "打开成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.OpenConversationResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "非好友不可打开",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{id}/hide": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将指定会话从当前用户的会话列表中隐藏",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "隐藏会话",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "隐藏成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "会话成员不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friend-requests/incoming": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前用户收到的待处理好友申请列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友申请"
+                ],
+                "summary": "获取收到的好友申请",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.FriendRequestListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friend-requests/outgoing": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前用户发出的待处理好友申请列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友申请"
+                ],
+                "summary": "获取发出的好友申请",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.FriendRequestListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friend-requests/{id}": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "向指定用户发送好友申请；若存在反向待处理申请，则自动同意",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友申请"
+                ],
+                "summary": "发送好友申请",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "目标用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "附言",
+                        "name": "req",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendFriendRequestReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "发送成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "目标用户不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "申请状态冲突",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friend-requests/{id}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "同意指定的好友申请，并建立好友关系与单聊会话",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友申请"
+                ],
+                "summary": "同意好友申请",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "好友申请ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "处理成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "好友申请不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "好友申请状态不合法",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friend-requests/{id}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "拒绝指定的好友申请",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友申请"
+                ],
+                "summary": "拒绝好友申请",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "好友申请ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "处理成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "好友申请不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "好友申请状态不合法",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friends": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前用户的好友列表及在线状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友"
+                ],
+                "summary": "获取好友列表",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.FriendListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/friends/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除当前用户与指定用户的好友关系",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "好友"
+                ],
+                "summary": "删除好友",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "好友用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/messages/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询当前用户与指定好友之间的历史消息，支持按消息ID向更早消息分页",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "消息"
+                ],
+                "summary": "获取消息历史",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "好友用户ID",
+                        "name": "peer_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "返回条数上限，默认20，最大100",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "查询该消息ID之前的更早消息",
+                        "name": "before_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.MessageHistoryResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "非好友不可查询",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/messages/read": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据会话ID和消息ID推进当前用户的已读游标",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "消息"
+                ],
+                "summary": "标记消息已读",
+                "parameters": [
+                    {
+                        "description": "已读请求",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.MarkReadReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "标记成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "消息不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/online": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "查询当前登录用户是否在线",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "查询当前用户在线状态",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.CheckUserOnlineResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前登录用户的基础信息与在线状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "获取当前用户信息",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.UserInfoResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "用户不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据用户ID查询基础信息与在线状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "获取指定用户信息",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.UserInfoResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "用户不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ws/": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "WebSocket"
+                ],
+                "summary": "建立 WebSocket 连接",
+                "responses": {
+                    "101": {
+                        "description": "Switching Protocols",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "升级连接失败",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     }
                 }
@@ -143,7 +1114,198 @@
         }
     },
     "definitions": {
-        "github_com_zyy125_im-system_internal_handler_dto.UserLoginReq": {
+        "dto.CheckUserOnlineResp": {
+            "type": "object",
+            "properties": {
+                "online": {
+                    "type": "boolean"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ConversationItemResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "last_message": {
+                    "$ref": "#/definitions/model.ChatMessage"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "peer": {
+                    "$ref": "#/definitions/dto.ConversationPeerResp"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.ConversationType"
+                },
+                "unread_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ConversationListResp": {
+            "type": "object",
+            "properties": {
+                "conversations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationItemResp"
+                    }
+                }
+            }
+        },
+        "dto.ConversationPeerResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "online": {
+                    "type": "boolean"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.FriendInfoResp": {
+            "type": "object",
+            "properties": {
+                "online": {
+                    "type": "boolean"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.FriendListResp": {
+            "type": "object",
+            "properties": {
+                "friends": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.FriendInfoResp"
+                    }
+                }
+            }
+        },
+        "dto.FriendRequestItemResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "receiver": {
+                    "$ref": "#/definitions/dto.FriendRequestUserResp"
+                },
+                "requester": {
+                    "$ref": "#/definitions/dto.FriendRequestUserResp"
+                },
+                "status": {
+                    "$ref": "#/definitions/model.FriendRequestStatus"
+                }
+            }
+        },
+        "dto.FriendRequestListResp": {
+            "type": "object",
+            "properties": {
+                "requests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.FriendRequestItemResp"
+                    }
+                }
+            }
+        },
+        "dto.FriendRequestUserResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "online": {
+                    "type": "boolean"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.MarkReadReq": {
+            "type": "object",
+            "required": [
+                "conversation_id",
+                "msg_id"
+            ],
+            "properties": {
+                "conversation_id": {
+                    "type": "string"
+                },
+                "msg_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.MessageHistoryResp": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.ChatMessage"
+                    }
+                },
+                "next_before_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.OpenConversationResp": {
+            "type": "object",
+            "properties": {
+                "conversation": {
+                    "$ref": "#/definitions/dto.ConversationItemResp"
+                }
+            }
+        },
+        "dto.SendFriendRequestReq": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UserInfoResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "online": {
+                    "type": "boolean"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UserLoginReq": {
             "type": "object",
             "required": [
                 "password",
@@ -158,7 +1320,15 @@
                 }
             }
         },
-        "github_com_zyy125_im-system_internal_handler_dto.UserRegisterReq": {
+        "dto.UserLoginResp": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UserRegisterReq": {
             "type": "object",
             "required": [
                 "password",
@@ -173,11 +1343,63 @@
                 }
             }
         },
-        "github_com_zyy125_im-system_pkg_response.Response": {
+        "model.ChatMessage": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "msg_id": {
+                    "type": "string"
+                },
+                "send_time": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.ConversationType": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                1,
+                2
+            ],
+            "x-enum-varnames": [
+                "ConversationTypeSingle",
+                "ConversationTypeGroup"
+            ]
+        },
+        "model.FriendRequestStatus": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "FriendRequestPending",
+                "FriendRequestAccepted",
+                "FriendRequestRejected"
+            ]
+        },
+        "response.Response": {
             "type": "object",
             "properties": {
                 "code": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "data": {},
                 "message": {

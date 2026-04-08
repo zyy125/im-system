@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zyy125/im-system/internal/apperr"
 	"github.com/zyy125/im-system/internal/repository"
 	"github.com/zyy125/im-system/pkg/jwt"
 	"github.com/zyy125/im-system/pkg/response"
@@ -14,6 +14,9 @@ import (
 func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistRepo) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Request.Header.Get("Authorization")
+		if token == "" {
+			token = c.Query("token")
+		}
 		token = strings.TrimSpace(token)
 		lower := strings.ToLower(token)
 		if strings.HasPrefix(lower, "bearer ") {
@@ -21,36 +24,36 @@ func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistR
 		}
 
 		if token == "" {
-			response.Fail(c, http.StatusUnauthorized, "token is empty")
-			c.Abort()
+			abortUnauthorized(c, apperr.TokenMissing())
 			return
 		}
 
 		claims, err := jwt.ParseJWT(token, secret)
 		if err != nil {
-			response.Fail(c, http.StatusUnauthorized, "token is invalid")
-			c.Abort()
+			abortUnauthorized(c, apperr.TokenInvalid())
 			return
 		}
 
 		jti := claims.ID
 		if jti == "" {
-			response.Fail(c, http.StatusUnauthorized, "token is invalid")
-			c.Abort()
+			abortUnauthorized(c, apperr.TokenInvalid())
 			return
 		}
 
 		bl, err := tokenBlacklistRepo.IsBlacklisted(c.Request.Context(), jti)
-		if err != nil || bl {
-			response.Fail(c, http.StatusUnauthorized, "token is invalid")
+		if err != nil {
+			response.FailError(c, err)
 			c.Abort()
+			return
+		}
+		if bl {
+			abortUnauthorized(c, apperr.TokenBlacklisted())
 			return
 		}
 
 		uid, _ := strconv.ParseUint(claims.UserID, 10, 64)
 		if uid <= 0 {
-			response.Fail(c, http.StatusUnauthorized, "token is invalid")
-			c.Abort()
+			abortUnauthorized(c, apperr.TokenInvalid())
 			return
 		}
 
@@ -59,4 +62,9 @@ func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistR
 
 		c.Next()
 	}
+}
+
+func abortUnauthorized(c *gin.Context, err error) {
+	response.FailError(c, err)
+	c.Abort()
 }

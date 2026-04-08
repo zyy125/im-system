@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IM System - 简单聊天</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        .message-bubble {
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .self-end .message-bubble {
+            background-color: #3b82f6;
+            color: white;
+            border-bottom-right-radius: 0;
+        }
+        .self-start .message-bubble {
+            background-color: #f3f4f6;
+            color: #1f2937;
+            border-bottom-left-radius: 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+
+    <!-- 登录注册视图 -->
+    <div id="auth-view" class="flex-1 flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg shadow-md w-96">
+            <h2 id="auth-title" class="text-2xl font-bold mb-6 text-center text-blue-600">IM 系统登录</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">用户名</label>
+                    <input type="text" id="username" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">密码</label>
+                    <input type="password" id="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <button id="login-btn" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition duration-200">登录</button>
+                <button id="register-btn" class="w-full bg-gray-200 text-gray-800 p-2 rounded-md hover:bg-gray-300 transition duration-200">注册</button>
+            </div>
+            <p id="auth-error" class="text-red-500 text-sm mt-4 text-center hidden"></p>
+        </div>
+    </div>
+
+    <!-- 聊天视图 -->
+    <div id="chat-view" class="hidden flex-1 flex h-full overflow-hidden">
+        <!-- 侧边栏：会话列表 -->
+        <div class="w-1/4 bg-white border-r flex flex-col">
+            <div class="p-4 border-b bg-blue-600 text-white flex justify-between items-center">
+                <span id="me-username" class="font-bold">未登录</span>
+                <button id="logout-btn" class="text-sm bg-blue-700 px-2 py-1 rounded hover:bg-blue-800">退出</button>
+            </div>
+            <div class="p-4 border-b">
+                <div class="flex space-x-2">
+                    <input type="number" id="friend-id-input" placeholder="用户ID" class="flex-1 border rounded px-2 py-1 text-sm">
+                    <button id="send-request-btn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">发送申请</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 border-b text-sm">
+                <button id="tab-conversations" class="px-3 py-2 bg-blue-50 text-blue-700 font-medium">会话</button>
+                <button id="tab-friends" class="px-3 py-2 text-gray-600">好友</button>
+                <button id="tab-requests" class="px-3 py-2 text-gray-600">申请</button>
+            </div>
+            <div id="conversations-panel" class="flex-1 overflow-y-auto">
+                <div id="conversations-list"></div>
+            </div>
+            <div id="friends-panel" class="hidden flex-1 overflow-y-auto">
+                <div id="friends-list"></div>
+            </div>
+            <div id="requests-panel" class="hidden flex-1 overflow-y-auto p-3 space-y-4">
+                <div>
+                    <div class="text-xs font-semibold text-gray-500 mb-2">收到的申请</div>
+                    <div id="incoming-requests" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="text-xs font-semibold text-gray-500 mb-2">发出的申请</div>
+                    <div id="outgoing-requests" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主界面：聊天窗口 -->
+        <div class="flex-1 flex flex-col bg-gray-50">
+            <div class="p-4 border-b bg-white text-gray-700 shadow-sm flex items-center justify-between gap-3">
+                <div id="chat-header" class="font-bold">选择会话开始聊天</div>
+                <button id="hide-conversation-btn" class="hidden text-sm bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200">隐藏会话</button>
+            </div>
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 flex flex-col space-y-4">
+                <!-- 消息 -->
+            </div>
+            <div class="p-4 bg-white border-t flex space-x-2 items-center">
+                <input type="text" id="message-input" placeholder="输入消息..." class="flex-1 border rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="send-btn" class="bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 transition duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        const WS_PROTOCOL_VERSION = 1;
+        const WS_EVENT_TYPE = {
+            CHAT_SEND: 'chat.send',
+            CHAT_MESSAGE: 'chat.message',
+            ERROR: 'error',
+            PRESENCE: 'presence.changed'
+        };
+        let state = {
+            token: localStorage.getItem('token') || '',
+            me: null,
+            conversations: [],
+            friends: [],
+            incomingRequests: [],
+            outgoingRequests: [],
+            activeConversation: null,
+            ws: null,
+            messages: {},
+            historyLoaded: {}, // peerId -> boolean
+            historyCursor: {}, // peerId -> next before_id
+            historyHasMore: {}, // peerId -> boolean
+            loadingHistory: {}, // peerId -> boolean
+            sidebarTab: 'conversations',
+            readRetryTimers: {}
+        };
+
+        function generateMsgId() {
+            return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        function conversationKey(conversation) {
+            if (conversation?.peer?.id) return `peer:${conversation.peer.id}`;
+            if (conversation?.id) return `conversation:${conversation.id}`;
+            return '';
+        }
+
+        function activeConversationKey() {
+            return conversationKey(state.activeConversation);
+        }
+
+        function peerIdOfConversation(conversation) {
+            return String(conversation?.peer?.id || '');
+        }
+
+        function conversationTitle(conversation) {
+            return conversation?.name || conversation?.peer?.username || '未命名会话';
+        }
+
+        function previewText(conversation) {
+            return conversation?.last_message?.content || '还没有消息';
+        }
+
+        function compareMessages(a, b) {
+            const leftTime = Number(a?.send_time || 0);
+            const rightTime = Number(b?.send_time || 0);
+            if (leftTime !== rightTime) return leftTime - rightTime;
+
+            const leftID = Number(a?.id || 0);
+            const rightID = Number(b?.id || 0);
+            if (leftID !== rightID) return leftID - rightID;
+
+            return String(a?.msg_id || '').localeCompare(String(b?.msg_id || ''));
+        }
+
+        function mergeMessages(existing, incoming) {
+            const merged = [...incoming];
+
+            existing.forEach(m => {
+                if (!merged.find(item => item.msg_id === m.msg_id)) {
+                    merged.push(m);
+                }
+            });
+
+            merged.sort(compareMessages);
+            return merged;
+        }
+
+        function resetChatView() {
+            state.activeConversation = null;
+            document.getElementById('chat-header').textContent = '选择会话开始聊天';
+            document.getElementById('hide-conversation-btn').classList.add('hidden');
+            document.getElementById('messages-container').innerHTML = '';
+        }
+
+        function setSidebarTab(tab) {
+            state.sidebarTab = tab;
+            const tabs = ['conversations', 'friends', 'requests'];
+            tabs.forEach(name => {
+                const tabEl = document.getElementById(`tab-${name}`);
+                const panelEl = document.getElementById(`${name}-panel`);
+                const active = name === tab;
+                tabEl.className = active
+                    ? 'px-3 py-2 bg-blue-50 text-blue-700 font-medium'
+                    : 'px-3 py-2 text-gray-600';
+                panelEl.classList.toggle('hidden', !active);
+            });
+        }
+
+        function sortConversations() {
+            state.conversations.sort((a, b) => {
+                const left = a.last_message?.send_time || 0;
+                const right = b.last_message?.send_time || 0;
+                if (left === right) {
+                    return (b.id || 0) - (a.id || 0);
+                }
+                return right - left;
+            });
+        }
+
+        function upsertConversation(conversation) {
+            const key = conversationKey(conversation);
+            if (!key) return;
+
+            const idx = state.conversations.findIndex(item => conversationKey(item) === key);
+            if (idx >= 0) {
+                state.conversations[idx] = {
+                    ...state.conversations[idx],
+                    ...conversation,
+                    peer: conversation.peer || state.conversations[idx].peer,
+                    last_message: conversation.last_message || state.conversations[idx].last_message
+                };
+            } else {
+                state.conversations.push(conversation);
+            }
+
+            sortConversations();
+            renderConversations();
+        }
+
+        function refreshActiveConversationRef() {
+            const key = activeConversationKey();
+            if (!key) return;
+            state.activeConversation = state.conversations.find(item => conversationKey(item) === key) || state.activeConversation;
+        }
+
+        function updateView() {
+            if (state.token) {
+                document.getElementById('auth-view').classList.add('hidden');
+                document.getElementById('chat-view').classList.remove('hidden');
+                initChat();
+            } else {
+                document.getElementById('auth-view').classList.remove('hidden');
+                document.getElementById('chat-view').classList.add('hidden');
+                if (state.ws) {
+                    state.ws.close();
+                    state.ws = null;
+                }
+            }
+        }
+
+        async function initChat() {
+            try {
+                const meRes = await axios.get(`${API_BASE}/users/me`, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                state.me = meRes.data.data;
+                document.getElementById('me-username').textContent = state.me.username + ` (ID:${state.me.id})`;
+
+                await loadSidebarData();
+                connectWs();
+            } catch (err) {
+                console.error(err);
+                if (err.response && err.response.status === 401) {
+                    logout();
+                }
+            }
+        }
+
+        async function loadSidebarData() {
+            await Promise.all([
+                loadConversations(),
+                loadFriends(),
+                loadRequests()
+            ]);
+        }
+
+        async function loadConversations() {
+            try {
+                const res = await axios.get(`${API_BASE}/conversations`, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                state.conversations = res.data.data.conversations || [];
+                sortConversations();
+                renderConversations();
+                if (state.activeConversation) {
+                    const current = state.conversations.find(item => conversationKey(item) === activeConversationKey());
+                    if (current) {
+                        state.activeConversation = current;
+                    } else {
+                        resetChatView();
+                    }
+                }
+            } catch (err) {
+                console.error('加载会话失败:', err);
+            }
+        }
+
+        async function loadFriends() {
+            try {
+                const res = await axios.get(`${API_BASE}/friends`, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                state.friends = res.data.data.friends || [];
+                renderFriends();
+            } catch (err) {
+                console.error('加载好友失败:', err);
+            }
+        }
+
+        async function loadRequests() {
+            try {
+                const [incomingRes, outgoingRes] = await Promise.all([
+                    axios.get(`${API_BASE}/friend-requests/incoming`, {
+                        headers: { Authorization: `Bearer ${state.token}` }
+                    }),
+                    axios.get(`${API_BASE}/friend-requests/outgoing`, {
+                        headers: { Authorization: `Bearer ${state.token}` }
+                    })
+                ]);
+                state.incomingRequests = incomingRes.data.data.requests || [];
+                state.outgoingRequests = outgoingRes.data.data.requests || [];
+                renderRequests();
+            } catch (err) {
+                console.error('加载申请失败:', err);
+            }
+        }
+
+        function updatePresence(userId, online) {
+            const userIdStr = String(userId);
+
+            state.conversations = state.conversations.map(conversation => {
+                if (String(conversation?.peer?.id) !== userIdStr) return conversation;
+                return {
+                    ...conversation,
+                    peer: {
+                        ...conversation.peer,
+                        online
+                    }
+                };
+            });
+
+            state.friends = state.friends.map(friend => {
+                if (String(friend.user_id) !== userIdStr) return friend;
+                return {
+                    ...friend,
+                    online
+                };
+            });
+
+            state.incomingRequests = state.incomingRequests.map(req => {
+                if (String(req?.requester?.id) === userIdStr) {
+                    return {
+                        ...req,
+                        requester: {
+                            ...req.requester,
+                            online
+                        }
+                    };
+                }
+                if (String(req?.receiver?.id) === userIdStr) {
+                    return {
+                        ...req,
+                        receiver: {
+                            ...req.receiver,
+                            online
+                        }
+                    };
+                }
+                return req;
+            });
+
+            state.outgoingRequests = state.outgoingRequests.map(req => {
+                if (String(req?.requester?.id) === userIdStr) {
+                    return {
+                        ...req,
+                        requester: {
+                            ...req.requester,
+                            online
+                        }
+                    };
+                }
+                if (String(req?.receiver?.id) === userIdStr) {
+                    return {
+                        ...req,
+                        receiver: {
+                            ...req.receiver,
+                            online
+                        }
+                    };
+                }
+                return req;
+            });
+
+            renderConversations();
+            renderFriends();
+            renderRequests();
+            refreshActiveConversationRef();
+        }
+
+        function renderConversations() {
+            const list = document.getElementById('conversations-list');
+            list.innerHTML = '';
+
+            if (!state.conversations.length) {
+                list.innerHTML = '<div class="p-4 text-sm text-gray-400">还没有会话，添加好友后开始聊天</div>';
+                return;
+            }
+
+            state.conversations.forEach(conversation => {
+                const key = conversationKey(conversation);
+                const div = document.createElement('div');
+                const isActive = activeConversationKey() === key;
+                div.className = `p-4 border-b cursor-pointer hover:bg-gray-100 ${isActive ? 'bg-blue-50' : ''}`;
+
+                div.innerHTML = `
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-gray-800 truncate">${conversationTitle(conversation)}</span>
+                                ${conversation.peer ? `<span class="w-2.5 h-2.5 rounded-full ${conversation.peer.online ? 'bg-green-500' : 'bg-gray-300'}"></span>` : ''}
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1 truncate">${previewText(conversation)}</div>
+                        </div>
+                        <div class="flex flex-col items-end gap-1 shrink-0">
+                            ${conversation.last_message?.send_time ? `<span class="text-xs text-gray-400">${new Date(conversation.last_message.send_time).toLocaleTimeString()}</span>` : ''}
+                            ${conversation.unread_count > 0 ? `<span class="min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">${conversation.unread_count}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+                div.onclick = () => selectConversation(conversation);
+                list.appendChild(div);
+            });
+        }
+
+        function renderFriends() {
+            const list = document.getElementById('friends-list');
+            list.innerHTML = '';
+
+            if (!state.friends.length) {
+                list.innerHTML = '<div class="p-4 text-sm text-gray-400">还没有好友，先发送好友申请</div>';
+                return;
+            }
+
+            state.friends.forEach(friend => {
+                const div = document.createElement('div');
+                div.className = 'p-4 border-b flex items-center justify-between gap-3';
+                div.innerHTML = `
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="font-medium text-gray-800 truncate">${friend.username}</span>
+                            <span class="w-2.5 h-2.5 rounded-full ${friend.online ? 'bg-green-500' : 'bg-gray-300'}"></span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">ID: ${friend.user_id}</div>
+                    </div>
+                    <button class="start-chat-btn shrink-0 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">发起会话</button>
+                `;
+                div.querySelector('.start-chat-btn').onclick = () => openDirectConversation(friend.user_id);
+                list.appendChild(div);
+            });
+        }
+
+        function renderRequests() {
+            const incomingBox = document.getElementById('incoming-requests');
+            const outgoingBox = document.getElementById('outgoing-requests');
+            incomingBox.innerHTML = '';
+            outgoingBox.innerHTML = '';
+
+            if (!state.incomingRequests.length) {
+                incomingBox.innerHTML = '<div class="text-sm text-gray-400">暂无收到的申请</div>';
+            } else {
+                state.incomingRequests.forEach(req => {
+                    const div = document.createElement('div');
+                    div.className = 'border rounded-lg p-3 bg-gray-50';
+                    div.innerHTML = `
+                        <div class="font-medium text-gray-800">${req.requester.username}</div>
+                        <div class="text-xs text-gray-400 mt-1">ID: ${req.requester.id}</div>
+                        <div class="text-sm text-gray-600 mt-2">${req.message || '请求添加你为好友'}</div>
+                        <div class="flex gap-2 mt-3">
+                            <button class="accept-btn bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">同意</button>
+                            <button class="reject-btn bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm hover:bg-gray-300">拒绝</button>
+                        </div>
+                    `;
+                    div.querySelector('.accept-btn').onclick = () => acceptFriendRequest(req.id);
+                    div.querySelector('.reject-btn').onclick = () => rejectFriendRequest(req.id);
+                    incomingBox.appendChild(div);
+                });
+            }
+
+            if (!state.outgoingRequests.length) {
+                outgoingBox.innerHTML = '<div class="text-sm text-gray-400">暂无发出的申请</div>';
+            } else {
+                state.outgoingRequests.forEach(req => {
+                    const div = document.createElement('div');
+                    div.className = 'border rounded-lg p-3 bg-gray-50';
+                    div.innerHTML = `
+                        <div class="font-medium text-gray-800">${req.receiver.username}</div>
+                        <div class="text-xs text-gray-400 mt-1">ID: ${req.receiver.id}</div>
+                        <div class="text-sm text-gray-600 mt-2">${req.message || '等待对方处理好友申请'}</div>
+                        <div class="text-xs text-orange-500 mt-3">等待处理中</div>
+                    `;
+                    outgoingBox.appendChild(div);
+                });
+            }
+        }
+
+        async function selectConversation(conversation) {
+            const key = conversationKey(conversation);
+            if (!key) return;
+            if (activeConversationKey() === key) return;
+
+            state.activeConversation = conversation;
+            document.getElementById('chat-header').textContent = `与 ${conversationTitle(conversation)} 聊天中`;
+            document.getElementById('hide-conversation-btn').classList.remove('hidden');
+            renderConversations();
+
+            const peerId = peerIdOfConversation(conversation);
+            if (!peerId) return;
+
+            if (!state.historyLoaded[peerId]) {
+                await loadHistory(peerId);
+            }
+            renderMessages();
+            await markConversationRead(conversation);
+        }
+
+        async function openDirectConversation(friendId) {
+            try {
+                const res = await axios.post(`${API_BASE}/conversations/direct/${friendId}/open`, {}, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                const conversation = res.data.data.conversation;
+                upsertConversation(conversation);
+                setSidebarTab('conversations');
+                await selectConversation(state.conversations.find(item => conversationKey(item) === conversationKey(conversation)) || conversation);
+            } catch (err) {
+                alert('发起会话失败: ' + (err.response?.data?.message || '未知错误'));
+            }
+        }
+
+        async function loadHistory(peerId, options = {}) {
+            const beforeId = Number(options.beforeId || 0);
+            const preserveScroll = !!options.preserveScroll;
+            if (state.loadingHistory[peerId]) return;
+            state.loadingHistory[peerId] = true;
+
+            const container = document.getElementById('messages-container');
+            const shouldPreserveScroll = preserveScroll
+                && state.activeConversation
+                && peerIdOfConversation(state.activeConversation) === String(peerId);
+            const previousHeight = shouldPreserveScroll ? container.scrollHeight : 0;
+            const previousScrollTop = shouldPreserveScroll ? container.scrollTop : 0;
+
+            try {
+                const params = new URLSearchParams({
+                    peer_id: String(peerId),
+                    limit: '20'
+                });
+                if (beforeId > 0) {
+                    params.set('before_id', String(beforeId));
+                }
+
+                const res = await axios.get(`${API_BASE}/messages/history?${params.toString()}`, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                const page = res.data.data || {};
+                const history = page.messages || [];
+
+                const existing = state.messages[peerId] || [];
+                const merged = mergeMessages(existing, history);
+                state.messages[peerId] = merged;
+                state.historyLoaded[peerId] = true;
+                state.historyHasMore[peerId] = !!page.has_more;
+                state.historyCursor[peerId] = Number(page.next_before_id || 0);
+
+                const conversation = state.conversations.find(item => peerIdOfConversation(item) === String(peerId));
+                if (conversation && merged.length > 0) {
+                    conversation.last_message = merged[merged.length - 1];
+                    upsertConversation(conversation);
+                }
+
+                if (shouldPreserveScroll) {
+                    renderMessages({ stickToBottom: false });
+                    const newHeight = container.scrollHeight;
+                    container.scrollTop = Math.max(0, newHeight - previousHeight + previousScrollTop);
+                }
+            } catch (err) {
+                console.error('加载历史记录失败:', err);
+                if (!state.messages[peerId]) state.messages[peerId] = [];
+            } finally {
+                state.loadingHistory[peerId] = false;
+            }
+        }
+
+        async function maybeLoadOlderHistory() {
+            if (!state.activeConversation) return;
+
+            const peerId = peerIdOfConversation(state.activeConversation);
+            if (!peerId) return;
+            if (!state.historyLoaded[peerId]) return;
+            if (!state.historyHasMore[peerId]) return;
+            if (state.loadingHistory[peerId]) return;
+
+            const container = document.getElementById('messages-container');
+            if (container.scrollTop > 40) return;
+
+            const beforeId = Number(state.historyCursor[peerId] || 0);
+            if (beforeId <= 0) {
+                state.historyHasMore[peerId] = false;
+                return;
+            }
+
+            await loadHistory(peerId, { beforeId, preserveScroll: true });
+        }
+
+        function renderMessages(options = {}) {
+            if (!state.activeConversation) return;
+            const container = document.getElementById('messages-container');
+            container.innerHTML = '';
+
+            const peerId = peerIdOfConversation(state.activeConversation);
+            const myIdStr = String(state.me.id);
+            const msgs = state.messages[peerId] || [];
+
+            msgs.forEach(m => {
+                const isSelf = String(m.from) === myIdStr;
+                const div = document.createElement('div');
+                div.className = `flex flex-col ${isSelf ? 'self-end items-end' : 'self-start items-start'}`;
+
+                const timeStr = new Date(m.send_time).toLocaleTimeString();
+
+                div.innerHTML = `
+                    <div class="text-xs text-gray-400 mb-1">${isSelf ? '' : conversationTitle(state.activeConversation) + ' '} ${timeStr}</div>
+                    <div class="message-bubble p-3 rounded-2xl shadow-sm text-sm">
+                        ${m.content}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+
+            if (options.stickToBottom !== false) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function markConversationRead(conversation) {
+            const peerId = peerIdOfConversation(conversation);
+            if (!peerId) return;
+
+            const msgs = state.messages[peerId] || [];
+            if (!msgs.length) return;
+            const myIdStr = String(state.me.id);
+            const incomingMsgs = msgs.filter(m => String(m.to) === myIdStr);
+            if (!incomingMsgs.length) return;
+
+            const lastMsg = incomingMsgs[incomingMsgs.length - 1];
+            if (!lastMsg || !lastMsg.conversation_id || !lastMsg.msg_id) return;
+
+            try {
+                await axios.post(`${API_BASE}/messages/read`, {
+                    conversation_id: String(lastMsg.conversation_id),
+                    msg_id: lastMsg.msg_id
+                }, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+
+                const target = state.conversations.find(item => conversationKey(item) === conversationKey(conversation));
+                if (target) {
+                    target.unread_count = 0;
+                    upsertConversation(target);
+                    refreshActiveConversationRef();
+                }
+            } catch (err) {
+                console.error('更新已读失败:', err);
+                const code = err.response?.data?.code;
+                if (state.readRetryTimers[peerId]) {
+                    clearTimeout(state.readRetryTimers[peerId]);
+                }
+                if (code === 'message.not_found' || code === 'message.not_delivered') {
+                    state.readRetryTimers[peerId] = setTimeout(() => {
+                        markConversationRead(conversation);
+                    }, 300);
+                }
+            }
+        }
+
+        async function ensureConversationForIncomingMessage(data, peerId) {
+            const key = `peer:${peerId}`;
+            let conversation = state.conversations.find(item => conversationKey(item) === key);
+            if (conversation) return conversation;
+
+            try {
+                const res = await axios.post(`${API_BASE}/conversations/direct/${peerId}/open`, {}, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                conversation = res.data.data.conversation;
+                upsertConversation(conversation);
+            } catch (err) {
+                console.error('补齐会话信息失败:', err);
+            }
+            return conversation || null;
+        }
+
+        function connectWs() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}${API_BASE}/ws/?token=${encodeURIComponent(state.token)}`;
+
+            console.log('正在连接 WS:', wsUrl);
+            state.ws = new WebSocket(wsUrl);
+
+            state.ws.onopen = async () => {
+                console.log('WS 已连接');
+                await loadSidebarData();
+            };
+
+            state.ws.onmessage = async (e) => {
+                const envelope = JSON.parse(e.data);
+                const type = envelope?.type;
+                const data = envelope?.data;
+                console.log('收到 WS 消息:', envelope);
+
+                if (!type || !data) {
+                    console.warn('收到未知 WS 消息:', envelope);
+                    return;
+                }
+
+                if (type === WS_EVENT_TYPE.PRESENCE) {
+                    updatePresence(data.user_id, !!data.online);
+                    return;
+                }
+
+                if (type === WS_EVENT_TYPE.ERROR) {
+                    console.error('WS 错误:', data.message);
+                    alert('错误: ' + data.message);
+                    return;
+                }
+
+                if (type !== WS_EVENT_TYPE.CHAT_MESSAGE) {
+                    console.warn('收到未处理的 WS 事件类型:', type, envelope);
+                    return;
+                }
+
+                const myIdStr = String(state.me.id);
+                const fromIdStr = String(data.from);
+                const peerId = String(fromIdStr === myIdStr ? data.to : data.from);
+
+                if (!state.messages[peerId]) state.messages[peerId] = [];
+
+                if (!state.messages[peerId].find(m => m.msg_id === data.msg_id)) {
+                    state.messages[peerId].push(data);
+                    state.messages[peerId].sort(compareMessages);
+                }
+
+                const conversation = await ensureConversationForIncomingMessage(data, peerId);
+                if (conversation) {
+                    const previousLastSendTime = conversation.last_message?.send_time || 0;
+                    const isActive = activeConversationKey() === conversationKey(conversation);
+                    const isBackfill = !isActive
+                        && String(data.from) !== myIdStr
+                        && previousLastSendTime > 0
+                        && data.send_time <= previousLastSendTime;
+
+                    conversation.last_message = data;
+                    conversation.unread_count = isActive || String(data.from) === myIdStr
+                        ? 0
+                        : isBackfill
+                            ? (conversation.unread_count || 0)
+                        : (conversation.unread_count || 0) + 1;
+                    upsertConversation(conversation);
+
+                    if (isActive) {
+                        refreshActiveConversationRef();
+                        renderMessages();
+                        markConversationRead(state.activeConversation);
+                    }
+                }
+            };
+
+            state.ws.onclose = () => {
+                console.log('WS 已断开');
+                if (state.token) {
+                    setTimeout(connectWs, 3000);
+                }
+            };
+
+            state.ws.onerror = (err) => {
+                console.error('WS 异常:', err);
+            };
+        }
+
+        function sendMessage() {
+            console.log('尝试发送消息...');
+            const input = document.getElementById('message-input');
+            const content = input.value.trim();
+
+            if (!content) return;
+
+            if (!state.activeConversation) {
+                alert('请先选择一个会话再发送消息');
+                return;
+            }
+            if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+                alert('聊天连接已断开，请尝试刷新页面');
+                return;
+            }
+
+            const peerId = peerIdOfConversation(state.activeConversation);
+            if (!peerId) {
+                alert('当前会话无效');
+                return;
+            }
+
+            const msg = {
+                msg_id: generateMsgId(),
+                to: Number(peerId),
+                content: content,
+                send_time: Date.now()
+            };
+
+            console.log('正在发送:', msg);
+            state.ws.send(JSON.stringify({
+                type: WS_EVENT_TYPE.CHAT_SEND,
+                version: WS_PROTOCOL_VERSION,
+                data: msg
+            }));
+
+            if (!state.messages[peerId]) state.messages[peerId] = [];
+            state.messages[peerId].push({
+                ...msg,
+                from: state.me.id
+            });
+            state.messages[peerId].sort(compareMessages);
+
+            state.activeConversation.last_message = {
+                ...msg,
+                from: state.me.id
+            };
+            state.activeConversation.unread_count = 0;
+            const activeKey = activeConversationKey();
+            upsertConversation(state.activeConversation);
+            state.activeConversation = state.conversations.find(item => conversationKey(item) === activeKey) || state.activeConversation;
+            renderMessages();
+
+            input.value = '';
+        }
+
+        async function handleAuth(type) {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorEl = document.getElementById('auth-error');
+
+            errorEl.classList.add('hidden');
+
+            try {
+                const url = type === 'login' ? '/auth/login' : '/auth/register';
+                const res = await axios.post(API_BASE + url, { username, password });
+
+                if (type === 'login') {
+                    state.token = res.data.data.token;
+                    localStorage.setItem('token', state.token);
+                    updateView();
+                } else {
+                    alert('注册成功，请登录');
+                }
+            } catch (err) {
+                errorEl.textContent = err.response?.data?.message || '操作失败';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            state.token = '';
+            localStorage.removeItem('token');
+            state.me = null;
+            state.conversations = [];
+            state.friends = [];
+            state.incomingRequests = [];
+            state.outgoingRequests = [];
+            state.activeConversation = null;
+            state.messages = {};
+            state.historyLoaded = {};
+            state.historyCursor = {};
+            state.historyHasMore = {};
+            state.loadingHistory = {};
+            state.sidebarTab = 'conversations';
+            resetChatView();
+            updateView();
+        }
+
+        async function sendFriendRequest() {
+            const id = document.getElementById('friend-id-input').value.trim();
+            if (!id) return;
+
+            try {
+                const res = await axios.post(`${API_BASE}/friend-requests/${id}`, {}, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                const result = res.data.data.result;
+                if (result === 'auto_accepted') {
+                    alert('检测到对方已经向你发送过申请，已自动成为好友');
+                    await loadSidebarData();
+                } else if (result === 'already_friends') {
+                    alert('你们已经是好友');
+                    await loadFriends();
+                } else {
+                    alert('好友申请已发送');
+                    await loadRequests();
+                }
+                document.getElementById('friend-id-input').value = '';
+            } catch (err) {
+                alert('发送申请失败: ' + (err.response?.data?.message || '未知错误'));
+            }
+        }
+
+        async function acceptFriendRequest(requestId) {
+            try {
+                await axios.post(`${API_BASE}/friend-requests/${requestId}/accept`, {}, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                await loadSidebarData();
+                setSidebarTab('conversations');
+            } catch (err) {
+                alert('同意申请失败: ' + (err.response?.data?.message || '未知错误'));
+            }
+        }
+
+        async function rejectFriendRequest(requestId) {
+            try {
+                await axios.post(`${API_BASE}/friend-requests/${requestId}/reject`, {}, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                await loadRequests();
+            } catch (err) {
+                alert('拒绝申请失败: ' + (err.response?.data?.message || '未知错误'));
+            }
+        }
+
+        async function hideActiveConversation() {
+            if (!state.activeConversation?.id) return;
+
+            try {
+                await axios.post(`${API_BASE}/conversations/${state.activeConversation.id}/hide`, {}, {
+                    headers: { Authorization: `Bearer ${state.token}` }
+                });
+                const currentKey = activeConversationKey();
+                state.conversations = state.conversations.filter(item => conversationKey(item) !== currentKey);
+                renderConversations();
+                resetChatView();
+            } catch (err) {
+                alert('隐藏会话失败: ' + (err.response?.data?.message || '未知错误'));
+            }
+        }
+
+        document.getElementById('login-btn').onclick = () => handleAuth('login');
+        document.getElementById('register-btn').onclick = () => handleAuth('register');
+        document.getElementById('logout-btn').onclick = logout;
+        document.getElementById('send-btn').onclick = sendMessage;
+        document.getElementById('send-request-btn').onclick = sendFriendRequest;
+        document.getElementById('hide-conversation-btn').onclick = hideActiveConversation;
+        document.getElementById('tab-conversations').onclick = () => setSidebarTab('conversations');
+        document.getElementById('tab-friends').onclick = () => setSidebarTab('friends');
+        document.getElementById('tab-requests').onclick = () => setSidebarTab('requests');
+        document.getElementById('messages-container').onscroll = maybeLoadOlderHistory;
+        document.getElementById('message-input').onkeypress = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        setSidebarTab('conversations');
+        updateView();
+    </script>
+</body>
+</html>

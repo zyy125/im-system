@@ -24,21 +24,21 @@ func NewPresenceRepo(rdb *redis.Client) *presenceRepo {
 }
 
 func (r *presenceRepo) SetOnline(ctx context.Context, userID uint64) error {
-	redisKey := fmt.Sprintf("im:user:online:%d", userID)
-	return r.rdb.Set(ctx, redisKey, "1", 0).Err()
+	return r.rdb.Set(ctx, presenceKey(userID), "1", 0).Err()
 }
 
 func (r *presenceRepo) SetOffline(ctx context.Context, userID uint64) error {
-	redisKey := fmt.Sprintf("im:user:online:%d", userID)
-	return r.rdb.Del(ctx, redisKey).Err()
+	return r.rdb.Del(ctx, presenceKey(userID)).Err()
 }
 
 func (r *presenceRepo) IsOnline(ctx context.Context, userID uint64) (bool, error) {
-	redisKey := fmt.Sprintf("im:user:online:%d", userID)
-	res, err := r.rdb.Exists(ctx, redisKey).Result() 
+	res, err := r.rdb.Exists(ctx, presenceKey(userID)).Result()
 	if err != nil {
 		return false, err
 	}
 	return res > 0, nil
 }
 
+func presenceKey(userID uint64) string {
+	return fmt.Sprintf("im:user:online:%d", userID)
+}

@@ -1,10 +1,14 @@
 package mq
 
-import(
+import (
 	"context"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+type ChatPublisher interface {
+	PublishChatMsg(ctx context.Context, msgJSON []byte) error
+}
 
 func (r *RabbitMQ) PublishChatMsg(ctx context.Context, msgJSON []byte) error {
 	return r.ch.PublishWithContext(

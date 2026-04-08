@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zyy125/im-system/config"
+	"github.com/zyy125/im-system/internal/apperr"
 	"github.com/zyy125/im-system/internal/model"
 	"github.com/zyy125/im-system/pkg/jwt"
 	"gorm.io/gorm"
@@ -33,6 +34,32 @@ func (m *MockAuthRepo) GetByUsername(ctx context.Context, username string) (mode
 		return model.User{}, gorm.ErrRecordNotFound
 	}
 	return *user, nil
+}
+
+func (m *MockAuthRepo) GetByID(ctx context.Context, id uint64) (model.User, error) {
+	for _, u := range m.users {
+		if u.ID == id {
+			return *u, nil
+		}
+	}
+	return model.User{}, gorm.ErrRecordNotFound
+}
+
+func (m *MockAuthRepo) ListByIDs(ctx context.Context, ids []uint64) ([]model.User, error) {
+	if len(ids) == 0 {
+		return []model.User{}, nil
+	}
+	res := make([]model.User, 0, len(ids))
+	set := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	for _, u := range m.users {
+		if _, ok := set[u.ID]; ok {
+			res = append(res, *u)
+		}
+	}
+	return res, nil
 }
 
 func (m *MockTokenBlacklistRepo) IsBlacklisted(ctx context.Context, token string) (bool, error) {
@@ -75,19 +102,19 @@ func TestAuthService_Register(t *testing.T) {
 		pwd := "test-password"
 		err := authService.Register(ctx, username, pwd)
 		assert.Error(t, err)
-		assert.Equal(t, gorm.ErrDuplicatedKey, err)
+		assert.Equal(t, apperr.CodeUserAlreadyExist, apperr.CodeOf(err))
 	})
 
 	t.Run("EmptyUsername", func(t *testing.T) {
 		err := authService.Register(ctx, "", "password")
 		assert.Error(t, err)
-		assert.Equal(t, "username or password is empty", err.Error())
+		assert.Equal(t, apperr.CodeAuthCredentialsRequired, apperr.CodeOf(err))
 	})
 
 	t.Run("EmptyPassword", func(t *testing.T) {
 		err := authService.Register(ctx, "user", "")
 		assert.Error(t, err)
-		assert.Equal(t, "username or password is empty", err.Error())
+		assert.Equal(t, apperr.CodeAuthCredentialsRequired, apperr.CodeOf(err))
 	})
 }
 
@@ -117,13 +144,14 @@ func TestAuthService_Login(t *testing.T) {
 	t.Run("WrongPassword", func(t *testing.T) {
 		token, err := authService.Login(ctx, username, "wrong-password")
 		assert.Error(t, err)
+		assert.Equal(t, apperr.CodeAuthInvalidCredentials, apperr.CodeOf(err))
 		assert.Empty(t, token)
 	})
 
 	t.Run("UserNotFound", func(t *testing.T) {
 		token, err := authService.Login(ctx, "non-existent", pwd)
 		assert.Error(t, err)
-		assert.Equal(t, "user not found", err.Error())
+		assert.Equal(t, apperr.CodeAuthInvalidCredentials, apperr.CodeOf(err))
 		assert.Empty(t, token)
 	})
 }
