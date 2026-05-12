@@ -26,8 +26,9 @@ func TestFriendRequestService_SendAutoAcceptedOnReversePending(t *testing.T) {
 	friendRepo.areFriendsFn = func(ctx context.Context, userID, friendID uint64) (bool, error) {
 		return false, nil
 	}
-	friendRepo.addPairFn = func(ctx context.Context, userID, friendID uint64) error {
+	friendRepo.addPairFn = func(ctx context.Context, userID, friendID, conversationID uint64) error {
 		addPairCalled = true
+		assert.Equal(t, uint64(10), conversationID)
 		return nil
 	}
 	conversationRepo.getOrCreateSingleFn = func(ctx context.Context, userA, userB uint64) (model.Conversation, error) {

@@ -9,95 +9,137 @@ import (
 	"github.com/zyy125/im-system/internal/model"
 )
 
-func TestMessageService_SaveMessageValidation(t *testing.T) {
-	service := NewMessageService(&stubMessageRepo{}, &stubConversationRepo{}, nil)
-	ctx := context.Background()
-
-	_, err := service.SaveMessage(ctx, &model.ChatMessage{ConversationID: "1"})
-	assert.Error(t, err)
-	assert.Equal(t, apperr.CodeMessageIDRequired, apperr.CodeOf(err))
-
-	_, err = service.SaveMessage(ctx, &model.ChatMessage{MsgID: "m1"})
-	assert.Error(t, err)
-	assert.Equal(t, apperr.CodeMessageConversationRequired, apperr.CodeOf(err))
-}
-
-func TestMessageService_SaveMessageUpdatesConversationState(t *testing.T) {
-	ctx := context.Background()
-	msgRepo := &stubMessageRepo{}
-	conversationRepo := &stubConversationRepo{}
-	service := NewMessageService(msgRepo, conversationRepo, &stubMessageTxManager{
-		messageRepo:      msgRepo,
-		conversationRepo: conversationRepo,
-	})
-
-	var ensured [][2]uint64
-	var deliveredConversationID uint64
-	var deliveredUserID uint64
-	var deliveredSeq uint64
-	var visibleOps [][3]uint64
-
-	msgRepo.createFn = func(ctx context.Context, msg *model.ChatMessage) error {
-		msg.ID = 101
-		return nil
-	}
-	conversationRepo.ensureMemberFn = func(ctx context.Context, conversationID, userID uint64) error {
-		ensured = append(ensured, [2]uint64{conversationID, userID})
-		return nil
-	}
-	conversationRepo.updateLastDeliveredFn = func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
-		deliveredConversationID = conversationID
-		deliveredUserID = userID
-		deliveredSeq = msgSeq
-		return nil
-	}
-	conversationRepo.setVisibleFn = func(ctx context.Context, conversationID, userID uint64, visible bool) error {
-		var flag uint64
-		if visible {
-			flag = 1
-		}
-		visibleOps = append(visibleOps, [3]uint64{conversationID, userID, flag})
-		return nil
-	}
-
-	msg := &model.ChatMessage{
-		MsgID:          "m1",
-		ConversationID: "12",
-		From:           9,
-		To:             10,
-		Content:        "hello",
-	}
-
-	saved, err := service.SaveMessage(ctx, msg)
-	assert.NoError(t, err)
-	assert.NotZero(t, msg.SendTime)
-	assert.Equal(t, uint64(101), saved.ID)
-	assert.Equal(t, [][2]uint64{{12, 9}, {12, 10}}, ensured)
-	assert.Equal(t, uint64(12), deliveredConversationID)
-	assert.Equal(t, uint64(10), deliveredUserID)
-	assert.Equal(t, uint64(101), deliveredSeq)
-	assert.Len(t, visibleOps, 2)
-}
-
 func TestMessageService_ListHistoryDelegates(t *testing.T) {
 	ctx := context.Background()
-	expected := []model.ChatMessage{{MsgID: "m1"}, {MsgID: "m2"}}
+	expected := []model.Message{{MsgID: "m1"}, {MsgID: "m2"}}
 	service := NewMessageService(
 		&stubMessageRepo{
-			listBetweenFn: func(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error) {
-				assert.Equal(t, uint64(1), userID)
-				assert.Equal(t, uint64(2), peerID)
+			listConversationHistoryFn: func(ctx context.Context, conversationID uint64, limit int, beforeSeq, afterSeq uint64) ([]model.Message, bool, error) {
+				assert.Equal(t, uint64(2), conversationID)
 				assert.Equal(t, 30, limit)
-				assert.Equal(t, uint64(123), beforeID)
+				assert.Equal(t, uint64(123), beforeSeq)
+				assert.Equal(t, uint64(8), afterSeq)
 				return expected, true, nil
 			},
 		},
-		&stubConversationRepo{},
-		nil,
+		&stubConversationRepo{
+			getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+				return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
+			},
+			getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+				return model.ConversationMember{
+					ConversationID: conversationID,
+					UserID:         userID,
+					Status:         model.ConversationMemberStatusActive,
+					JoinedMsgSeq:   8,
+				}, nil
+			},
+		},
 	)
 
-	msgs, hasMore, err := service.ListHistory(ctx, 1, 2, 30, 123)
+	msgs, hasMore, err := service.ListConversationHistory(ctx, 1, 2, 30, 123)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, msgs)
 	assert.True(t, hasMore)
+}
+
+func TestMessageService_MarkDeliveredRejectsUndeliveredSeq(t *testing.T) {
+	ctx := context.Background()
+	service := NewMessageService(
+		&stubMessageRepo{
+			getMaxSeqByConversationFn: func(ctx context.Context, conversationID uint64) (uint64, error) {
+				return 5, nil
+			},
+		},
+		&stubConversationRepo{
+			getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+				return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
+			},
+			getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+				return model.ConversationMember{
+					ConversationID:  conversationID,
+					UserID:          userID,
+					Status:          model.ConversationMemberStatusActive,
+					LastAckedMsgSeq: 3,
+				}, nil
+			},
+		},
+	)
+
+	_, err := service.MarkDelivered(ctx, 9, 12, 6)
+	assert.Error(t, err)
+	assert.Equal(t, apperr.CodeMessageNotDelivered, apperr.CodeOf(err))
+}
+
+func TestMessageService_MarkDeliveredUpdatesSeq(t *testing.T) {
+	ctx := context.Background()
+	var deliveredSeq uint64
+	service := NewMessageService(
+		&stubMessageRepo{
+			getMaxSeqByConversationFn: func(ctx context.Context, conversationID uint64) (uint64, error) {
+				return 8, nil
+			},
+		},
+		&stubConversationRepo{
+			getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+				return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
+			},
+			getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+				return model.ConversationMember{
+					ConversationID:  conversationID,
+					UserID:          userID,
+					Status:          model.ConversationMemberStatusActive,
+					LastAckedMsgSeq: 3,
+				}, nil
+			},
+			updateLastAckedFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+				deliveredSeq = msgSeq
+				return nil
+			},
+			listActiveMembersFn: func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error) {
+				return []model.ConversationMember{
+					{ConversationID: conversationID, UserID: 9, Status: model.ConversationMemberStatusActive},
+					{ConversationID: conversationID, UserID: 10, Status: model.ConversationMemberStatusActive},
+				}, nil
+			},
+		},
+	)
+
+	recipients, err := service.MarkDelivered(ctx, 9, 12, 7)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(7), deliveredSeq)
+	assert.Equal(t, []uint64{9, 10}, recipients)
+}
+
+func TestMessageService_MarkDeliveredIgnoresDuplicateOrLowerSeq(t *testing.T) {
+	ctx := context.Background()
+	var updateCalled bool
+	service := NewMessageService(
+		&stubMessageRepo{},
+		&stubConversationRepo{
+			getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+				return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
+			},
+			getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+				return model.ConversationMember{
+					ConversationID:  conversationID,
+					UserID:          userID,
+					Status:          model.ConversationMemberStatusActive,
+					LastAckedMsgSeq: 7,
+				}, nil
+			},
+			updateLastAckedFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+				updateCalled = true
+				return nil
+			},
+			listActiveMembersFn: func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error) {
+				return []model.ConversationMember{{ConversationID: conversationID, UserID: 9, Status: model.ConversationMemberStatusActive}}, nil
+			},
+		},
+	)
+
+	recipients, err := service.MarkDelivered(ctx, 9, 12, 6)
+	assert.NoError(t, err)
+	assert.False(t, updateCalled)
+	assert.Equal(t, []uint64{9}, recipients)
 }

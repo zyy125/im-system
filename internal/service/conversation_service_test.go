@@ -10,52 +10,44 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestConversationService_OpenDirectConversationRequiresFriendship(t *testing.T) {
-	service := NewConversationService(
-		&stubConversationRepo{},
-		&stubMessageRepo{},
-		&stubUserRepo{},
-		&stubPresenceRepo{},
-		&stubFriendRepo{
-			areFriendsFn: func(ctx context.Context, userID, friendID uint64) (bool, error) {
-				return false, nil
-			},
-		},
-	)
-
-	_, err := service.OpenDirectConversation(context.Background(), 1, 2)
-	assert.Error(t, err)
-	assert.Equal(t, apperr.CodeFriendNotFriends, apperr.CodeOf(err))
-}
-
 func TestConversationService_ListOfflineMessagesSortsAcrossConversations(t *testing.T) {
 	service := NewConversationService(
 		&stubConversationRepo{
 			listMembersByUserFn: func(ctx context.Context, userID uint64) ([]model.ConversationMember, error) {
 				return []model.ConversationMember{
-					{ConversationID: 1, UserID: userID, LastReadMsgSeq: 1, LastDeliveredMsgSeq: 3},
-					{ConversationID: 2, UserID: userID, LastReadMsgSeq: 0, LastDeliveredMsgSeq: 2},
+					{ConversationID: 1, UserID: userID, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 1, LastAckedMsgSeq: 1},
+					{ConversationID: 2, UserID: userID, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 0, LastAckedMsgSeq: 0},
 				}, nil
 			},
 		},
 		&stubMessageRepo{
-			listConversationPendingForUserFn: func(ctx context.Context, conversationID string, userID, afterSeq, untilSeq uint64) ([]model.ChatMessage, error) {
-				assert.Equal(t, uint64(9), userID)
-				if conversationID == "1" {
-					return []model.ChatMessage{
-						{ID: 3, MsgID: "m3", ConversationID: "1", To: userID, SendTime: 3000},
-						{ID: 2, MsgID: "m2", ConversationID: "1", To: userID, SendTime: 2000},
-					}, nil
+			listConversationRangeFn: func(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error) {
+				assert.Equal(t, uint64(200), uint64(limit))
+				if conversationID == 1 {
+					assert.Equal(t, uint64(1), afterSeq)
+					assert.Equal(t, uint64(3), untilSeq)
+					return []model.Message{
+						{ID: 3, MsgID: "m3", ConversationID: 1, Seq: 3, From: 2, SendTime: 3000},
+						{ID: 2, MsgID: "m2", ConversationID: 1, Seq: 2, From: 2, SendTime: 2000},
+					}, false, nil
 				}
-				return []model.ChatMessage{
-					{ID: 4, MsgID: "m4", ConversationID: "2", To: userID, SendTime: 2000},
-					{ID: 1, MsgID: "m1", ConversationID: "2", To: userID, SendTime: 1000},
-				}, nil
+				assert.Equal(t, uint64(0), afterSeq)
+				assert.Equal(t, uint64(2), untilSeq)
+				return []model.Message{
+					{ID: 4, MsgID: "m4", ConversationID: 2, Seq: 2, From: 3, SendTime: 2000},
+					{ID: 1, MsgID: "m1", ConversationID: 2, Seq: 1, From: 3, SendTime: 1000},
+				}, false, nil
+			},
+			getMaxSeqByConversationFn: func(ctx context.Context, conversationID uint64) (uint64, error) {
+				if conversationID == 1 {
+					return 3, nil
+				}
+				return 2, nil
 			},
 		},
 		&stubUserRepo{},
 		&stubPresenceRepo{},
-		&stubFriendRepo{},
+		nil,
 	)
 
 	msgs, err := service.ListOfflineMessages(context.Background(), 9)
@@ -75,7 +67,10 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		service := NewConversationService(
 			&stubConversationRepo{
 				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
-					return model.ConversationMember{ConversationID: conversationID, UserID: userID, LastDeliveredMsgSeq: 55}, nil
+					return model.ConversationMember{ConversationID: conversationID, UserID: userID, Status: model.ConversationMemberStatusActive, LastAckedMsgSeq: 55}, nil
+				},
+				getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+					return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
 				},
 				updateLastReadFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
 					updatedConversationID = conversationID
@@ -83,64 +78,65 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 					updatedSeq = msgSeq
 					return nil
 				},
-			},
-			&stubMessageRepo{
-				getByConversationMsgIDFn: func(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error) {
-					return model.ChatMessage{ID: 55, MsgID: msgID, ConversationID: conversationID, To: 9}, nil
+				listActiveMembersFn: func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error) {
+					return []model.ConversationMember{
+						{ConversationID: conversationID, UserID: 9, Status: model.ConversationMemberStatusActive},
+						{ConversationID: conversationID, UserID: 10, Status: model.ConversationMemberStatusActive},
+					}, nil
 				},
 			},
+			&stubMessageRepo{},
 			&stubUserRepo{},
 			&stubPresenceRepo{},
-			&stubFriendRepo{},
+			nil,
 		)
 
-		err := service.MarkRead(ctx, 9, "12", "mid-1")
+		recipients, err := service.MarkRead(ctx, 9, 12, 55)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(12), updatedConversationID)
 		assert.Equal(t, uint64(9), updatedUserID)
 		assert.Equal(t, uint64(55), updatedSeq)
+		assert.Equal(t, []uint64{9, 10}, recipients)
 	})
 
-	t.Run("mark read rejects self-sent message", func(t *testing.T) {
+	t.Run("mark read rejects messages before joined seq", func(t *testing.T) {
 		service := NewConversationService(
 			&stubConversationRepo{
 				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
-					return model.ConversationMember{ConversationID: conversationID, UserID: userID, LastDeliveredMsgSeq: 55}, nil
+					return model.ConversationMember{ConversationID: conversationID, UserID: userID, Status: model.ConversationMemberStatusActive, JoinedMsgSeq: 55, LastAckedMsgSeq: 55}, nil
+				},
+				getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+					return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
 				},
 			},
-			&stubMessageRepo{
-				getByConversationMsgIDFn: func(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error) {
-					return model.ChatMessage{ID: 55, MsgID: msgID, ConversationID: conversationID, To: 7}, nil
-				},
-			},
+			&stubMessageRepo{},
 			&stubUserRepo{},
 			&stubPresenceRepo{},
-			&stubFriendRepo{},
+			nil,
 		)
 
-		err := service.MarkRead(ctx, 9, "12", "mid-1")
+		_, err := service.MarkRead(ctx, 9, 12, 55)
 		assert.Error(t, err)
 		assert.Equal(t, apperr.CodeMessageNotReadable, apperr.CodeOf(err))
 	})
 
-	t.Run("mark read rejects messages beyond delivered seq", func(t *testing.T) {
+	t.Run("mark read rejects messages beyond acked seq", func(t *testing.T) {
 		service := NewConversationService(
 			&stubConversationRepo{
 				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
-					return model.ConversationMember{ConversationID: conversationID, UserID: userID, LastDeliveredMsgSeq: 54}, nil
+					return model.ConversationMember{ConversationID: conversationID, UserID: userID, Status: model.ConversationMemberStatusActive, LastAckedMsgSeq: 54}, nil
+				},
+				getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+					return model.Conversation{ID: conversationID, Status: model.ConversationStatusActive}, nil
 				},
 			},
-			&stubMessageRepo{
-				getByConversationMsgIDFn: func(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error) {
-					return model.ChatMessage{ID: 55, MsgID: msgID, ConversationID: conversationID, To: 9}, nil
-				},
-			},
+			&stubMessageRepo{},
 			&stubUserRepo{},
 			&stubPresenceRepo{},
-			&stubFriendRepo{},
+			nil,
 		)
 
-		err := service.MarkRead(ctx, 9, "12", "mid-1")
+		_, err := service.MarkRead(ctx, 9, 12, 55)
 		assert.Error(t, err)
 		assert.Equal(t, apperr.CodeMessageNotDelivered, apperr.CodeOf(err))
 	})
@@ -149,21 +145,21 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		service := NewConversationService(
 			&stubConversationRepo{
 				listMembersByUserFn: func(ctx context.Context, userID uint64) ([]model.ConversationMember, error) {
-					return []model.ConversationMember{{ConversationID: 1, UserID: userID, LastReadMsgSeq: 10}}, nil
+					return []model.ConversationMember{{ConversationID: 1, UserID: userID, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 10}}, nil
 				},
 				listConversationsByUserFn: func(ctx context.Context, userID uint64) ([]model.Conversation, error) {
 					key := "1:2"
-					return []model.Conversation{{ID: 1, Type: model.ConversationTypeSingle, SingleKey: &key}}, nil
+					return []model.Conversation{{ID: 1, Type: model.ConversationTypeSingle, Status: model.ConversationStatusActive, SingleKey: &key}}, nil
 				},
 				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
-					return model.ConversationMember{ConversationID: conversationID, UserID: userID, LastReadMsgSeq: 10}, nil
+					return model.ConversationMember{ConversationID: conversationID, UserID: userID, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 10}, nil
 				},
 			},
 			&stubMessageRepo{
-				getLatestByConversationFn: func(ctx context.Context, conversationID string) (model.ChatMessage, error) {
-					return model.ChatMessage{ID: 11, MsgID: "m11", ConversationID: conversationID, SendTime: 12345, Content: "hello"}, nil
+				getLatestByConversationFn: func(ctx context.Context, conversationID uint64) (model.Message, error) {
+					return model.Message{ID: 11, MsgID: "m11", ConversationID: conversationID, SendTime: 12345, Content: "hello"}, nil
 				},
-				countUnreadFn: func(ctx context.Context, conversationID string, userID uint64, afterSeq uint64) (int64, error) {
+				countUnreadFn: func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
 					return 3, nil
 				},
 			},
@@ -177,7 +173,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 					return true, nil
 				},
 			},
-			&stubFriendRepo{},
+			nil,
 		)
 
 		items, err := service.ListConversations(ctx, 1)
@@ -195,26 +191,26 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		service := NewConversationService(
 			&stubConversationRepo{
 				listMembersByUserFn: func(ctx context.Context, userID uint64) ([]model.ConversationMember, error) {
-					return []model.ConversationMember{{ConversationID: 2, UserID: userID}}, nil
+					return []model.ConversationMember{{ConversationID: 2, UserID: userID, Status: model.ConversationMemberStatusActive}}, nil
 				},
 				listConversationsByUserFn: func(ctx context.Context, userID uint64) ([]model.Conversation, error) {
-					return []model.Conversation{{ID: 2, Type: model.ConversationTypeGroup, Name: "group"}}, nil
+					return []model.Conversation{{ID: 2, Type: model.ConversationTypeGroup, Name: "group", Status: model.ConversationStatusActive}}, nil
 				},
 				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
-					return model.ConversationMember{ConversationID: conversationID, UserID: userID}, nil
+					return model.ConversationMember{ConversationID: conversationID, UserID: userID, Status: model.ConversationMemberStatusActive}, nil
 				},
 			},
 			&stubMessageRepo{
-				getLatestByConversationFn: func(ctx context.Context, conversationID string) (model.ChatMessage, error) {
-					return model.ChatMessage{}, gorm.ErrRecordNotFound
+				getLatestByConversationFn: func(ctx context.Context, conversationID uint64) (model.Message, error) {
+					return model.Message{}, gorm.ErrRecordNotFound
 				},
-				countUnreadFn: func(ctx context.Context, conversationID string, userID uint64, afterSeq uint64) (int64, error) {
+				countUnreadFn: func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
 					return 0, nil
 				},
 			},
 			&stubUserRepo{},
 			&stubPresenceRepo{},
-			&stubFriendRepo{},
+			nil,
 		)
 
 		items, err := service.ListConversations(ctx, 1)
@@ -222,4 +218,146 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		assert.Len(t, items, 1)
 		assert.Nil(t, items[0].LastMessage)
 	})
+
+	t.Run("list groups returns active groups regardless of visible", func(t *testing.T) {
+		service := NewConversationService(
+			&stubConversationRepo{
+				listActiveGroupsByUserFn: func(ctx context.Context, userID uint64) ([]model.Conversation, error) {
+					return []model.Conversation{
+						{ID: 21, Type: model.ConversationTypeGroup, Name: "project", Status: model.ConversationStatusActive},
+					}, nil
+				},
+				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+					return model.ConversationMember{
+						ConversationID: conversationID,
+						UserID:         userID,
+						Status:         model.ConversationMemberStatusActive,
+						Visible:        false,
+					}, nil
+				},
+			},
+			&stubMessageRepo{
+				getLatestByConversationFn: func(ctx context.Context, conversationID uint64) (model.Message, error) {
+					return model.Message{ID: 30, MsgID: "m30", ConversationID: conversationID, Content: "hello"}, nil
+				},
+				countUnreadFn: func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
+					return 2, nil
+				},
+			},
+			&stubUserRepo{},
+			&stubPresenceRepo{},
+			nil,
+		)
+
+		items, err := service.ListGroups(ctx, 1)
+		assert.NoError(t, err)
+		assert.Len(t, items, 1)
+		assert.Equal(t, uint64(21), items[0].ID)
+		assert.Equal(t, "project", items[0].Name)
+		assert.Equal(t, int64(2), items[0].UnreadCount)
+		assert.NotNil(t, items[0].LastMessage)
+		assert.Nil(t, items[0].Peer)
+	})
+}
+
+func TestConversationService_CreateGroupAndListMembers(t *testing.T) {
+	ctx := context.Background()
+
+	var createdConversation model.Conversation
+	var upserted []model.ConversationMember
+	var createdMessages []model.Message
+
+	service := NewConversationService(
+		&stubConversationRepo{
+			createFn: func(ctx context.Context, conversation *model.Conversation) error {
+				conversation.ID = 21
+				createdConversation = *conversation
+				return nil
+			},
+			upsertMemberFn: func(ctx context.Context, member *model.ConversationMember) error {
+				upserted = append(upserted, *member)
+				return nil
+			},
+			listActiveMembersFn: func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error) {
+				return []model.ConversationMember{
+					{ConversationID: conversationID, UserID: 1, Status: model.ConversationMemberStatusActive, Role: model.ConversationMemberRoleOwner},
+					{ConversationID: conversationID, UserID: 2, Status: model.ConversationMemberStatusActive, Role: model.ConversationMemberRoleMember},
+					{ConversationID: conversationID, UserID: 3, Status: model.ConversationMemberStatusActive, Role: model.ConversationMemberRoleMember},
+				}, nil
+			},
+			updateLastAckedFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+				return nil
+			},
+			updateLastReadFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+				return nil
+			},
+			setVisibleFn: func(ctx context.Context, conversationID, userID uint64, visible bool) error {
+				return nil
+			},
+			getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+				return model.ConversationMember{
+					ConversationID: conversationID,
+					UserID:         userID,
+					Status:         model.ConversationMemberStatusActive,
+					Role:           model.ConversationMemberRoleOwner,
+				}, nil
+			},
+			getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+				return model.Conversation{
+					ID:      conversationID,
+					Type:    model.ConversationTypeGroup,
+					Status:  model.ConversationStatusActive,
+					Name:    "project",
+					OwnerID: 1,
+				}, nil
+			},
+			countActiveMembersFn: func(ctx context.Context, conversationID uint64) (int64, error) {
+				return 3, nil
+			},
+		},
+		&stubMessageRepo{
+			createFn: func(ctx context.Context, msg *model.Message) error {
+				msg.ID = 101
+				createdMessages = append(createdMessages, *msg)
+				return nil
+			},
+			getLatestByConversationFn: func(ctx context.Context, conversationID uint64) (model.Message, error) {
+				return model.Message{}, gorm.ErrRecordNotFound
+			},
+			countUnreadFn: func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
+				return 0, nil
+			},
+		},
+		&stubUserRepo{
+			listByIDsFn: func(ctx context.Context, ids []uint64) ([]model.User, error) {
+				users := make([]model.User, 0, len(ids))
+				for _, id := range ids {
+					users = append(users, model.User{ID: id, Username: "u"})
+				}
+				return users, nil
+			},
+		},
+		&stubPresenceRepo{
+			isOnlineFn: func(ctx context.Context, userID uint64) (bool, error) {
+				return userID != 3, nil
+			},
+		},
+		nil,
+	)
+
+	summary, err := service.CreateGroup(ctx, 1, " project ", []uint64{2, 3, 2})
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(21), summary.ID)
+	assert.Equal(t, model.ConversationTypeGroup, createdConversation.Type)
+	assert.Equal(t, "project", createdConversation.Name)
+	assert.Len(t, upserted, 3)
+	assert.Len(t, createdMessages, 1)
+	assert.Equal(t, model.MessageTypeSystem, createdMessages[0].Type)
+	assert.Equal(t, model.MessageEventGroupCreated, createdMessages[0].Event)
+
+	members, err := service.ListGroupMembers(ctx, 1, 21)
+	assert.NoError(t, err)
+	assert.Len(t, members, 3)
+	assert.Equal(t, uint64(1), members[0].UserID)
+	assert.Equal(t, model.ConversationMemberRoleOwner, members[0].Role)
 }

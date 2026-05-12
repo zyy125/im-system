@@ -42,14 +42,14 @@ func (r *hubTestPresenceRepo) IsOnline(_ context.Context, userID uint64) (bool, 
 }
 
 type hubTestOfflineLoader struct {
-	listFn func(ctx context.Context, userID uint64) ([]model.ChatMessage, error)
+	listFn func(ctx context.Context, userID uint64) ([]model.Message, error)
 }
 
-func (l *hubTestOfflineLoader) ListOfflineMessages(ctx context.Context, userID uint64) ([]model.ChatMessage, error) {
+func (l *hubTestOfflineLoader) ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error) {
 	if l != nil && l.listFn != nil {
 		return l.listFn(ctx, userID)
 	}
-	return []model.ChatMessage{}, nil
+	return []model.Message{}, nil
 }
 
 type hubTestAudience struct {
@@ -67,14 +67,14 @@ func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 	loaderGate := make(chan struct{})
 	loader := &hubTestOfflineLoader{
-		listFn: func(ctx context.Context, userID uint64) ([]model.ChatMessage, error) {
+		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
 			if userID != 1 {
-				return []model.ChatMessage{}, nil
+				return []model.Message{}, nil
 			}
 			<-loaderGate
-			return []model.ChatMessage{
-				{ID: 1, MsgID: "off-1", ConversationID: "10", From: 2, To: 1, SendTime: 1000, Content: "offline-1"},
-				{ID: 2, MsgID: "off-2", ConversationID: "10", From: 2, To: 1, SendTime: 2000, Content: "offline-2"},
+			return []model.Message{
+				{ID: 1, MsgID: "off-1", ConversationID: 10, Type: model.MessageTypeText, From: 2, SendTime: 1000, Content: "offline-1"},
+				{ID: 2, MsgID: "off-2", ConversationID: 10, Type: model.MessageTypeText, From: 2, SendTime: 2000, Content: "offline-2"},
 			}, nil
 		},
 	}
@@ -106,8 +106,8 @@ func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 	second := readHubPayload(t, client.Send)
 	third := readHubPayload(t, client.Send)
 
-	firstMsg := decodeChatMessage(t, first)
-	secondMsg := decodeChatMessage(t, second)
+	firstMsg := decodeMessage(t, first)
+	secondMsg := decodeMessage(t, second)
 
 	assert.Equal(t, "off-1", firstMsg.MsgID)
 	assert.Equal(t, "off-2", secondMsg.MsgID)
@@ -123,12 +123,12 @@ func TestHub_PresenceQueuedUntilFriendReadyAndBroadcastsOfflineOnUnregister(t *t
 	presenceRepo := newHubTestPresenceRepo()
 	friendReadyGate := make(chan struct{})
 	loader := &hubTestOfflineLoader{
-		listFn: func(ctx context.Context, userID uint64) ([]model.ChatMessage, error) {
+		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
 			if userID != 2 {
-				return []model.ChatMessage{}, nil
+				return []model.Message{}, nil
 			}
 			<-friendReadyGate
-			return []model.ChatMessage{}, nil
+			return []model.Message{}, nil
 		},
 	}
 	audience := &hubTestAudience{
@@ -281,15 +281,15 @@ func readHubPayload(t *testing.T, ch <-chan []byte) []byte {
 	}
 }
 
-func decodeChatMessage(t *testing.T, payload []byte) model.ChatMessage {
+func decodeMessage(t *testing.T, payload []byte) model.Message {
 	t.Helper()
 
 	var env Envelope
 	require.NoError(t, json.Unmarshal(payload, &env))
-	require.Equal(t, EventTypeChatMessage, env.Type)
+	require.Equal(t, EventTypeMessageCreated, env.Type)
 	require.Equal(t, ProtocolVersion, env.Version)
 
-	var msg model.ChatMessage
+	var msg model.Message
 	require.NoError(t, json.Unmarshal(env.Data, &msg))
 	return msg
 }

@@ -9,7 +9,9 @@ import (
 )
 
 type ClientLifecycle interface {
+	// Bootstrap 处理用户刚建立连接时的初始化，例如上线和离线补推。
 	Bootstrap(ctx context.Context, userID uint64) ([][]byte, error)
+	// Disconnect 处理用户连接断开后的下线收尾逻辑。
 	Disconnect(ctx context.Context, userID uint64)
 }
 
@@ -50,7 +52,7 @@ func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byt
 
 	payloads := make([][]byte, 0, len(msgs))
 	for _, msg := range msgs {
-		payload, err := MarshalEnvelope(EventTypeChatMessage, NewServerChatMessage(msg))
+		payload, err := MarshalEnvelope(EventTypeMessageCreated, NewServerMessage(msg))
 		if err != nil {
 			log.Printf("Marshal offline message %s failed: %v", msg.MsgID, err)
 			continue
@@ -71,9 +73,9 @@ func (l *clientLifecycle) Disconnect(ctx context.Context, userID uint64) {
 	l.broadcastPresence(ctx, userID, false)
 }
 
-func (l *clientLifecycle) loadOfflineMessages(ctx context.Context, userID uint64) ([]model.ChatMessage, error) {
+func (l *clientLifecycle) loadOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error) {
 	if l.offlineLoader == nil {
-		return []model.ChatMessage{}, nil
+		return []model.Message{}, nil
 	}
 	msgs, err := l.offlineLoader.ListOfflineMessages(ctx, userID)
 	if err != nil {

@@ -53,17 +53,12 @@ func (s *friendService) AddFriend(ctx context.Context, userID, friendID uint64) 
 		return err
 	}
 
-	alreadyFriends, err := s.friendRepo.AreFriends(ctx, userID, friendID)
+	conversation, err := s.conversationRepo.GetOrCreateSingle(ctx, userID, friendID)
 	if err != nil {
 		return err
 	}
-	if !alreadyFriends {
-		if err := s.friendRepo.AddPair(ctx, userID, friendID); err != nil {
-			return err
-		}
-	}
-	conversation, err := s.conversationRepo.GetOrCreateSingle(ctx, userID, friendID)
-	if err != nil {
+
+	if err := s.friendRepo.AddPair(ctx, userID, friendID, conversation.ID); err != nil {
 		return err
 	}
 	if err := s.conversationRepo.SetVisible(ctx, conversation.ID, userID, true); err != nil {
@@ -87,9 +82,10 @@ func (s *friendService) AreFriends(ctx context.Context, userID, friendID uint64)
 }
 
 type FriendInfo struct {
-	UserID   uint64
-	Username string
-	Online   bool
+	UserID         uint64
+	Username       string
+	Online         bool
+	ConversationID uint64
 }
 
 func (s *friendService) ListFriends(ctx context.Context, userID uint64) ([]FriendInfo, error) {
@@ -97,24 +93,38 @@ func (s *friendService) ListFriends(ctx context.Context, userID uint64) ([]Frien
 		return nil, apperr.RequiredOne("user_id")
 	}
 
-	ids, err := s.friendRepo.ListFriendIDs(ctx, userID)
+	items, err := s.friendRepo.ListFriendProfiles(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if len(ids) == 0 {
+	if len(items) == 0 {
 		return []FriendInfo{}, nil
 	}
-	users, err := s.userRepo.ListByIDs(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]FriendInfo, 0, len(users))
-	for _, u := range users {
-		online, err := s.presenceRepo.IsOnline(ctx, u.ID)
+
+	res := make([]FriendInfo, 0, len(items))
+	for _, item := range items {
+		online, err := s.presenceRepo.IsOnline(ctx, item.UserID)
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, FriendInfo{UserID: u.ID, Username: u.Username, Online: online})
+
+		conversationID := item.ConversationID
+		if conversationID == 0 {
+			conv, err := s.conversationRepo.GetOrCreateSingle(ctx, userID, item.UserID)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.friendRepo.AddPair(ctx, userID, item.UserID, conv.ID); err != nil {
+				return nil, err
+			}
+			conversationID = conv.ID
+		}
+		res = append(res, FriendInfo{
+			UserID:         item.UserID,
+			Username:       item.Username,
+			Online:         online,
+			ConversationID: conversationID,
+		})
 	}
 	return res, nil
 }

@@ -43,6 +43,12 @@ const (
 	CodeConversationMemberNotFound   Code = "conversation.member_not_found"
 	CodeConversationMemberUpdateFail Code = "conversation.member_update_failed"
 	CodeConversationNotAccessible    Code = "conversation.not_accessible"
+	CodeConversationInvalidName      Code = "conversation.invalid_name"
+	CodeConversationNoPermission     Code = "conversation.no_permission"
+	CodeConversationDismissed        Code = "conversation.dismissed"
+	CodeConversationMemberLimit      Code = "conversation.member_limit_exceeded"
+	CodeConversationOwnerCannotLeave Code = "conversation.owner_cannot_leave"
+	CodeConversationInvalidType      Code = "conversation.invalid_type"
 
 	CodeMessageInvalidPeerID        Code = "message.invalid_peer_id"
 	CodeMessageInvalidPayload       Code = "message.invalid_payload"
@@ -91,6 +97,12 @@ var httpStatusByCode = map[Code]int{
 	CodeConversationMemberNotFound:   http.StatusNotFound,
 	CodeConversationMemberUpdateFail: http.StatusInternalServerError,
 	CodeConversationNotAccessible:    http.StatusForbidden,
+	CodeConversationInvalidName:      http.StatusBadRequest,
+	CodeConversationNoPermission:     http.StatusForbidden,
+	CodeConversationDismissed:        http.StatusConflict,
+	CodeConversationMemberLimit:      http.StatusConflict,
+	CodeConversationOwnerCannotLeave: http.StatusConflict,
+	CodeConversationInvalidType:      http.StatusBadRequest,
 
 	CodeMessageInvalidPeerID:        http.StatusBadRequest,
 	CodeMessageInvalidPayload:       http.StatusBadRequest,

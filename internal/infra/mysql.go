@@ -25,7 +25,7 @@ func NewMySQL(dsn string) (*gorm.DB, error) {
 func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&model.User{},
-		&model.ChatMessage{},
+		&model.Message{},
 		&model.Friend{},
 		&model.FriendRequest{},
 		&model.Conversation{},

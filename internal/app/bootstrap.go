@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// repositories 聚合所有数据访问层依赖，便于在装配函数间传递。
 type repositories struct {
 	userRepo          repository.UserRepo
 	blacklistRepo     repository.TokenBlacklistRepo
@@ -23,21 +24,27 @@ type repositories struct {
 	friendRequestRepo repository.FriendRequestRepo
 	conversationRepo  repository.ConversationRepo
 	messageTxManager  repository.MessageTxManager
+	messageStateRepo  repository.MessageStateRepo
+	redisClient       *redis.Client
 }
 
+// services 聚合所有业务逻辑层依赖。
 type services struct {
 	authSvc          service.AuthService
 	userSvc          service.UserService
 	friendSvc        service.FriendService
 	friendRequestSvc service.FriendRequestService
 	messageSvc       service.MessageService
+	messageSendSvc   service.MessageSendService
 	conversationSvc  service.ConversationService
 }
 
+// realtimeComponents 聚合实时通信相关组件。
 type realtimeComponents struct {
 	hub *ws.Hub
 }
 
+// handlers 聚合所有 HTTP/WebSocket 处理器。
 type handlers struct {
 	authHandler          *handler.AuthHandler
 	wsHandler            *handler.WSHandler
@@ -58,16 +65,22 @@ func initRepositories(db *gorm.DB, rdb *redis.Client) *repositories {
 		friendRequestRepo: repository.NewFriendRequestRepo(db),
 		conversationRepo:  repository.NewConversationRepo(db),
 		messageTxManager:  repository.NewMessageTxManager(db),
+		messageStateRepo:  repository.NewMessageStateRepo(rdb),
+		redisClient:       rdb,
 	}
 }
 
 func initServices(cfg *config.Config, repos *repositories) *services {
-	conversationSvc := service.NewConversationService(
+	seqAllocator := service.NewSeqAllocator(repos.msgRepo, repos.messageStateRepo)
+	messageSvc := service.NewMessageService(repos.msgRepo, repos.conversationRepo)
+	messageSendSvc := service.NewMessageSendService(repos.messageTxManager, seqAllocator)
+	conversationSvc := service.NewConversationServiceWithRuntime(
 		repos.conversationRepo,
 		repos.msgRepo,
 		repos.userRepo,
 		repos.presenceRepo,
-		repos.friendRepo,
+		repos.messageTxManager,
+		seqAllocator,
 	)
 	friendSvc := service.NewFriendService(
 		repos.friendRepo,
@@ -81,12 +94,13 @@ func initServices(cfg *config.Config, repos *repositories) *services {
 		userSvc:          service.NewUserService(repos.userRepo, repos.presenceRepo),
 		friendSvc:        friendSvc,
 		friendRequestSvc: service.NewFriendRequestService(repos.friendRequestRepo, friendSvc, repos.userRepo, repos.presenceRepo),
-		messageSvc:       service.NewMessageService(repos.msgRepo, repos.conversationRepo, repos.messageTxManager),
+		messageSvc:       messageSvc,
+		messageSendSvc:   messageSendSvc,
 		conversationSvc:  conversationSvc,
 	}
 }
 
-func initRealtime(repos *repositories, svcs *services) (*realtimeComponents, error) {
+func initRealtime(cfg *config.Config, repos *repositories, svcs *services) (*realtimeComponents, error) {
 	hub := ws.NewHub(repos.presenceRepo, svcs.conversationSvc, repos.friendRepo)
 	return &realtimeComponents{
 		hub: hub,
@@ -96,11 +110,11 @@ func initRealtime(repos *repositories, svcs *services) (*realtimeComponents, err
 func initHandlers(rt *realtimeComponents, svcs *services) *handlers {
 	return &handlers{
 		authHandler:          handler.NewAuthHandler(svcs.authSvc),
-		wsHandler:            handler.NewWSHandler(rt.hub, svcs.messageSvc, svcs.friendSvc, svcs.conversationSvc),
+		wsHandler:            handler.NewWSHandler(rt.hub, svcs.messageSendSvc, svcs.messageSvc, svcs.conversationSvc),
 		userHandler:          handler.NewUserHandler(svcs.userSvc),
 		friendHandler:        handler.NewFriendHandler(svcs.friendSvc),
 		friendRequestHandler: handler.NewFriendRequestHandler(svcs.friendRequestSvc),
-		messageHandler:       handler.NewMessageHandler(svcs.messageSvc, svcs.friendSvc, svcs.conversationSvc),
+		messageHandler:       handler.NewMessageHandler(svcs.messageSvc, svcs.conversationSvc),
 		conversationHandler:  handler.NewConversationHandler(svcs.conversationSvc),
 	}
 }
@@ -119,6 +133,7 @@ func buildRouter(hs *handlers, repos *repositories, cfg *config.Config) *gin.Eng
 	})
 }
 
+// startRealtime 启动 Hub 主循环。
 func startRealtime(ctx context.Context, rt *realtimeComponents) error {
 	go rt.hub.Run(ctx)
 	return nil

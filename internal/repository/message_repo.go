@@ -12,19 +12,22 @@ import (
 )
 
 type MessageRepo interface {
-	Create(ctx context.Context, msg *model.ChatMessage) error
-	ListBetween(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error)
-	// ListConversationPending returns all messages in a conversation whose ID is in
-	// the range (afterSeq, untilSeq]. It is conversation-scoped and does not filter
-	// by receiver, so both outbound and inbound messages may be returned.
-	ListConversationPending(ctx context.Context, conversationID string, afterSeq, untilSeq uint64) ([]model.ChatMessage, error)
-	// ListConversationPendingForUser returns only messages addressed to userID in a
-	// conversation whose ID is in the range (afterSeq, untilSeq]. Use this when you
-	// need the current user's inbound pending messages, such as unread/offline sync.
-	ListConversationPendingForUser(ctx context.Context, conversationID string, userID, afterSeq, untilSeq uint64) ([]model.ChatMessage, error)
-	GetLatestByConversation(ctx context.Context, conversationID string) (model.ChatMessage, error)
-	CountUnreadByConversation(ctx context.Context, conversationID string, userID uint64, afterSeq uint64) (int64, error)
-	GetByConversationAndMsgID(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error)
+	// Create 插入一条消息；若 msg_id 已存在则回填已有记录实现幂等。
+	Create(ctx context.Context, msg *model.Message) error
+	// ListConversationHistory 按会话分页读取历史消息。
+	ListConversationHistory(ctx context.Context, conversationID uint64, limit int, beforeSeq, afterSeq uint64) ([]model.Message, bool, error)
+	// ListConversationAfterSeq 按 seq 正序读取某条 seq 之后的消息，用于补洞和同步。
+	ListConversationAfterSeq(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
+	// ListConversationRangeAfterSeq 按 seq 正序读取 (afterSeq, untilSeq] 区间内的消息。
+	ListConversationRangeAfterSeq(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error)
+	// GetLatestByConversation 获取某个会话最新的一条消息。
+	GetLatestByConversation(ctx context.Context, conversationID uint64) (model.Message, error)
+	// GetMaxSeqByConversation 查询某个会话当前已持久化的最大 seq。
+	GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error)
+	// ListConversationIDs 返回当前存在消息的会话 ID 列表。
+	ListConversationIDs(ctx context.Context) ([]uint64, error)
+	// CountUnreadByConversation 统计某个成员在会话中的未读消息数。
+	CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error)
 }
 
 type messageRepo struct {
@@ -35,9 +38,12 @@ func NewMessageRepo(db *gorm.DB) *messageRepo {
 	return &messageRepo{db: db}
 }
 
-func (r *messageRepo) Create(ctx context.Context, msg *model.ChatMessage) error {
+func (r *messageRepo) Create(ctx context.Context, msg *model.Message) error {
 	if msg.MsgID == "" {
 		return apperr.MessageIDRequired()
+	}
+	if msg.ConversationID == 0 || msg.Seq == 0 {
+		return apperr.Required("conversation_id", "seq")
 	}
 
 	result := r.db.WithContext(ctx).
@@ -48,6 +54,14 @@ func (r *messageRepo) Create(ctx context.Context, msg *model.ChatMessage) error 
 	}
 	if result.RowsAffected == 0 {
 		existing, err := r.getByMsgID(ctx, msg.MsgID)
+		if err == nil {
+			*msg = existing
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		existing, err = r.getByConversationAndSeq(ctx, msg.ConversationID, msg.Seq)
 		if err != nil {
 			return err
 		}
@@ -56,9 +70,9 @@ func (r *messageRepo) Create(ctx context.Context, msg *model.ChatMessage) error 
 	return nil
 }
 
-func (r *messageRepo) ListBetween(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error) {
-	if userID == 0 || peerID == 0 {
-		return nil, false, apperr.Required("user_id", "peer_id")
+func (r *messageRepo) ListConversationHistory(ctx context.Context, conversationID uint64, limit int, beforeSeq, afterSeq uint64) ([]model.Message, bool, error) {
+	if conversationID == 0 {
+		return nil, false, apperr.RequiredOne("conversation_id")
 	}
 	if limit <= 0 {
 		limit = 20
@@ -68,14 +82,17 @@ func (r *messageRepo) ListBetween(ctx context.Context, userID, peerID uint64, li
 	}
 
 	q := r.db.WithContext(ctx).
-		Model(&model.ChatMessage{}).
-		Where("( `from` = ? AND `to` = ? ) OR ( `from` = ? AND `to` = ? )", userID, peerID, peerID, userID)
-	if beforeID > 0 {
-		q = q.Where("id < ?", beforeID)
+		Model(&model.Message{}).
+		Where("conversation_id = ?", conversationID)
+	if beforeSeq > 0 {
+		q = q.Where("seq < ?", beforeSeq)
+	}
+	if afterSeq > 0 {
+		q = q.Where("seq > ?", afterSeq)
 	}
 
-	var msgs []model.ChatMessage
-	if err := q.Order("id DESC").Limit(limit + 1).Find(&msgs).Error; err != nil {
+	var msgs []model.Message
+	if err := q.Order("seq DESC").Limit(limit + 1).Find(&msgs).Error; err != nil {
 		return nil, false, err
 	}
 
@@ -90,84 +107,115 @@ func (r *messageRepo) ListBetween(ctx context.Context, userID, peerID uint64, li
 	return msgs, hasMore, nil
 }
 
-func (r *messageRepo) ListConversationPending(ctx context.Context, conversationID string, afterSeq, untilSeq uint64) ([]model.ChatMessage, error) {
-	if conversationID == "" {
-		return nil, apperr.MessageConversationRequired()
+func (r *messageRepo) ListConversationAfterSeq(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error) {
+	if conversationID == 0 {
+		return nil, false, apperr.RequiredOne("conversation_id")
 	}
-	if untilSeq == 0 {
-		return []model.ChatMessage{}, nil
+	if limit <= 0 {
+		limit = 100
 	}
-
-	q := r.db.WithContext(ctx).
-		Model(&model.ChatMessage{}).
-		Where("conversation_id = ?", conversationID)
-
-	if afterSeq > 0 {
-		q = q.Where("id > ?", afterSeq)
+	if limit > 200 {
+		limit = 200
 	}
 
-	var msgs []model.ChatMessage
-	err := q.Where("id <= ?", untilSeq).
-		Order("id ASC").
-		Find(&msgs).Error
-	if err != nil {
-		return nil, err
+	var msgs []model.Message
+	if err := r.db.WithContext(ctx).
+		Model(&model.Message{}).
+		Where("conversation_id = ? AND seq > ?", conversationID, afterSeq).
+		Order("seq ASC").
+		Limit(limit + 1).
+		Find(&msgs).Error; err != nil {
+		return nil, false, err
 	}
 
-	return msgs, nil
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[:limit]
+	}
+	return msgs, hasMore, nil
 }
 
-func (r *messageRepo) ListConversationPendingForUser(ctx context.Context, conversationID string, userID, afterSeq, untilSeq uint64) ([]model.ChatMessage, error) {
-	if conversationID == "" || userID == 0 {
-		return nil, apperr.Required("conversation_id", "user_id")
+func (r *messageRepo) ListConversationRangeAfterSeq(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error) {
+	if conversationID == 0 {
+		return nil, false, apperr.RequiredOne("conversation_id")
 	}
 	if untilSeq == 0 {
-		return []model.ChatMessage{}, nil
+		return []model.Message{}, false, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		limit = 200
 	}
 
-	q := r.db.WithContext(ctx).
-		Model(&model.ChatMessage{}).
-		Where("conversation_id = ? AND `to` = ?", conversationID, userID)
-
-	if afterSeq > 0 {
-		q = q.Where("id > ?", afterSeq)
+	var msgs []model.Message
+	if err := r.db.WithContext(ctx).
+		Model(&model.Message{}).
+		Where("conversation_id = ? AND seq > ? AND seq <= ?", conversationID, afterSeq, untilSeq).
+		Order("seq ASC").
+		Limit(limit + 1).
+		Find(&msgs).Error; err != nil {
+		return nil, false, err
 	}
 
-	var msgs []model.ChatMessage
-	err := q.Where("id <= ?", untilSeq).
-		Order("id ASC").
-		Find(&msgs).Error
-	if err != nil {
-		return nil, err
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[:limit]
 	}
-
-	return msgs, nil
+	return msgs, hasMore, nil
 }
 
-func (r *messageRepo) GetLatestByConversation(ctx context.Context, conversationID string) (model.ChatMessage, error) {
-	if conversationID == "" {
-		return model.ChatMessage{}, apperr.MessageConversationRequired()
+func (r *messageRepo) GetLatestByConversation(ctx context.Context, conversationID uint64) (model.Message, error) {
+	if conversationID == 0 {
+		return model.Message{}, apperr.MessageConversationRequired()
 	}
 
-	var msg model.ChatMessage
+	var msg model.Message
 	err := r.db.WithContext(ctx).
 		Where("conversation_id = ?", conversationID).
-		Order("id DESC").
+		Order("seq DESC").
 		First(&msg).Error
 	return msg, err
 }
 
-func (r *messageRepo) CountUnreadByConversation(ctx context.Context, conversationID string, userID uint64, afterSeq uint64) (int64, error) {
-	if conversationID == "" || userID == 0 {
+func (r *messageRepo) GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error) {
+	if conversationID == 0 {
+		return 0, apperr.RequiredOne("conversation_id")
+	}
+	type result struct {
+		MaxSeq uint64
+	}
+	var row result
+	err := r.db.WithContext(ctx).
+		Model(&model.Message{}).
+		Select("COALESCE(MAX(seq), 0) AS max_seq").
+		Where("conversation_id = ?", conversationID).
+		Scan(&row).Error
+	return row.MaxSeq, err
+}
+
+func (r *messageRepo) ListConversationIDs(ctx context.Context) ([]uint64, error) {
+	var ids []uint64
+	err := r.db.WithContext(ctx).
+		Model(&model.Message{}).
+		Distinct("conversation_id").
+		Order("conversation_id ASC").
+		Pluck("conversation_id", &ids).Error
+	return ids, err
+}
+
+func (r *messageRepo) CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
+	if conversationID == 0 || userID == 0 {
 		return 0, apperr.Required("conversation_id", "user_id")
 	}
 
 	q := r.db.WithContext(ctx).
-		Model(&model.ChatMessage{}).
-		Where("conversation_id = ? AND `to` = ?", conversationID, userID)
+		Model(&model.Message{}).
+		Where("conversation_id = ? AND `from` <> ?", conversationID, userID)
 
 	if afterSeq > 0 {
-		q = q.Where("id > ?", afterSeq)
+		q = q.Where("seq > ?", afterSeq)
 	}
 
 	var count int64
@@ -178,21 +226,18 @@ func (r *messageRepo) CountUnreadByConversation(ctx context.Context, conversatio
 	return count, nil
 }
 
-func (r *messageRepo) GetByConversationAndMsgID(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error) {
-	if conversationID == "" || msgID == "" {
-		return model.ChatMessage{}, apperr.Required("conversation_id", "msg_id")
-	}
-	var msg model.ChatMessage
+func (r *messageRepo) getByMsgID(ctx context.Context, msgID string) (model.Message, error) {
+	var msg model.Message
 	err := r.db.WithContext(ctx).
-		Where("conversation_id = ? AND msg_id = ?", conversationID, msgID).
+		Where("msg_id = ?", msgID).
 		First(&msg).Error
 	return msg, err
 }
 
-func (r *messageRepo) getByMsgID(ctx context.Context, msgID string) (model.ChatMessage, error) {
-	var msg model.ChatMessage
+func (r *messageRepo) getByConversationAndSeq(ctx context.Context, conversationID, seq uint64) (model.Message, error) {
+	var msg model.Message
 	err := r.db.WithContext(ctx).
-		Where("msg_id = ?", msgID).
+		Where("conversation_id = ? AND seq = ?", conversationID, seq).
 		First(&msg).Error
 	return msg, err
 }

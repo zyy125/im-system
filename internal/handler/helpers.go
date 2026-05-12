@@ -81,19 +81,6 @@ func queryInt(c *gin.Context, key string, defaultValue int) int {
 	return n
 }
 
-func queryInt64(c *gin.Context, key string, defaultValue int64) int64 {
-	value := c.Query(key)
-	if value == "" {
-		return defaultValue
-	}
-
-	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return defaultValue
-	}
-	return n
-}
-
 func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 	return dto.UserInfoResp{
 		ID:       user.ID,
@@ -104,9 +91,10 @@ func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 
 func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 	return dto.FriendInfoResp{
-		UserID:   friend.UserID,
-		Username: friend.Username,
-		Online:   friend.Online,
+		UserID:         friend.UserID,
+		Username:       friend.Username,
+		Online:         friend.Online,
+		ConversationID: friend.ConversationID,
 	}
 }
 
@@ -115,5 +103,36 @@ func buildFriendRequestUserResp(user service.FriendRequestUser) dto.FriendReques
 		ID:       user.ID,
 		Username: user.Username,
 		Online:   user.Online,
+	}
+}
+
+
+func buildConversationItemResp(conversation service.ConversationSummary) dto.ConversationItemResp {
+	item := dto.ConversationItemResp{
+		ID:          conversation.ID,
+		Type:        conversation.Type,
+		Name:        conversation.Name,
+		UnreadCount: conversation.UnreadCount,
+		LastMessage: conversation.LastMessage,
+	}
+	if conversation.Peer != nil {
+		item.Peer = &dto.ConversationPeerResp{
+			ID:       conversation.Peer.ID,
+			Username: conversation.Peer.Username,
+			Online:   conversation.Peer.Online,
+		}
+	}
+	return item
+}
+
+func buildGroupDetailResp(group service.GroupDetail) dto.GroupDetailResp {
+	return dto.GroupDetailResp{
+		ID:          group.ID,
+		Name:        group.Name,
+		Avatar:      group.Avatar,
+		OwnerID:     group.OwnerID,
+		Status:      group.Status,
+		MyRole:      group.MyRole,
+		MemberCount: group.MemberCount,
 	}
 }

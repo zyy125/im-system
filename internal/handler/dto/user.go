@@ -12,9 +12,10 @@ type UserInfoResp struct {
 }
 
 type FriendInfoResp struct {
-	UserID   uint64 `json:"user_id"`
-	Username string `json:"username"`
-	Online   bool   `json:"online"`
+	UserID         uint64 `json:"user_id"`
+	Username       string `json:"username"`
+	Online         bool   `json:"online"`
+	ConversationID uint64 `json:"conversation_id"`
 }
 
 type FriendListResp struct {

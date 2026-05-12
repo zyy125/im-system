@@ -22,7 +22,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 
 	if err := db.AutoMigrate(
 		&model.User{},
-		&model.ChatMessage{},
+		&model.Message{},
 		&model.Friend{},
 		&model.FriendRequest{},
 		&model.Conversation{},

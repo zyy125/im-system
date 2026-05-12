@@ -42,7 +42,7 @@ func (h *FriendHandler) RemoveFriend(c *gin.Context) {
 
 // ListFriends 获取好友列表
 // @Summary 获取好友列表
-// @Description 返回当前用户的好友列表及在线状态
+// @Description 返回当前用户的好友列表、在线状态及对应单聊会话ID
 // @Tags 好友
 // @Produce json
 // @Security BearerAuth

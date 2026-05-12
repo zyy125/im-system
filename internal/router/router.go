@@ -86,14 +86,24 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 		messages := api.Group("/messages", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
 		{
 			messages.GET("/history", messageHandler.History)
+			messages.GET("/sync", messageHandler.Sync)
 			messages.POST("/read", messageHandler.MarkRead)
 		}
 
 		conversations := api.Group("/conversations", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
 		{
 			conversations.GET("", conversationHandler.List)
-			conversations.POST("/direct/:id/open", conversationHandler.OpenDirect)
+			conversations.GET("/groups", conversationHandler.ListGroups)
+			conversations.POST("/:id/open", conversationHandler.Open)
 			conversations.POST("/:id/hide", conversationHandler.Hide)
+			conversations.POST("/groups", conversationHandler.CreateGroup)
+			conversations.GET("/groups/:id", conversationHandler.GetGroupDetail)
+			conversations.GET("/groups/:id/members", conversationHandler.ListGroupMembers)
+			conversations.POST("/groups/:id/name", conversationHandler.UpdateGroupName)
+			conversations.POST("/groups/:id/invite", conversationHandler.InviteGroupMembers)
+			conversations.POST("/groups/:id/members/:user_id/remove", conversationHandler.RemoveGroupMember)
+			conversations.POST("/groups/:id/leave", conversationHandler.LeaveGroup)
+			conversations.POST("/groups/:id/dismiss", conversationHandler.DismissGroup)
 		}
 
 		ws := api.Group("/ws", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))

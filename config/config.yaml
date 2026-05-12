@@ -2,6 +2,9 @@ jwt:
   secret: "123456"
   expiry: 24
 
+app:
+  env: "development"
+
 redis:
   addr: "localhost:6379"
   password: ""
@@ -9,6 +12,3 @@ redis:
 
 mysql:
   dsn: "root:123456@tcp(localhost:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
-
-rabbitmq:
-  url: "amqp://guest:guest@localhost:5672/"

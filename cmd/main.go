@@ -20,20 +20,19 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
+		return err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	app, err := app.InitApp(cfg, ctx)
-	if err != nil {
-		log.Fatalf("Error initializing app: %v", err)
-	}
-
-	if err := app.Router.Run(":8080"); err != nil {
-		log.Fatalf("Error running app: %v", err)
-	}
+	return app.Run(ctx, cfg)
 }

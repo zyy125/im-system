@@ -70,15 +70,16 @@ func (s *stubPresenceRepo) IsOnline(ctx context.Context, userID uint64) (bool, e
 }
 
 type stubFriendRepo struct {
-	addPairFn       func(ctx context.Context, userID, friendID uint64) error
-	removePairFn    func(ctx context.Context, userID, friendID uint64) error
-	areFriendsFn    func(ctx context.Context, userID, friendID uint64) (bool, error)
-	listFriendIDsFn func(ctx context.Context, userID uint64) ([]uint64, error)
+	addPairFn            func(ctx context.Context, userID, friendID, conversationID uint64) error
+	removePairFn         func(ctx context.Context, userID, friendID uint64) error
+	areFriendsFn         func(ctx context.Context, userID, friendID uint64) (bool, error)
+	listFriendIDsFn      func(ctx context.Context, userID uint64) ([]uint64, error)
+	listFriendProfilesFn func(ctx context.Context, userID uint64) ([]repository.FriendProfile, error)
 }
 
-func (s *stubFriendRepo) AddPair(ctx context.Context, userID, friendID uint64) error {
+func (s *stubFriendRepo) AddPair(ctx context.Context, userID, friendID, conversationID uint64) error {
 	if s.addPairFn != nil {
-		return s.addPairFn(ctx, userID, friendID)
+		return s.addPairFn(ctx, userID, friendID, conversationID)
 	}
 	return nil
 }
@@ -104,28 +105,50 @@ func (s *stubFriendRepo) ListFriendIDs(ctx context.Context, userID uint64) ([]ui
 	return []uint64{}, nil
 }
 
+func (s *stubFriendRepo) ListFriendProfiles(ctx context.Context, userID uint64) ([]repository.FriendProfile, error) {
+	if s.listFriendProfilesFn != nil {
+		return s.listFriendProfilesFn(ctx, userID)
+	}
+	return []repository.FriendProfile{}, nil
+}
+
 type stubConversationRepo struct {
+	createFn                  func(ctx context.Context, conversation *model.Conversation) error
+	getByIDFn                 func(ctx context.Context, conversationID uint64) (model.Conversation, error)
 	getOrCreateSingleFn       func(ctx context.Context, userA, userB uint64) (model.Conversation, error)
-	getSingleFn               func(ctx context.Context, userA, userB uint64) (model.Conversation, error)
 	listMembersByUserFn       func(ctx context.Context, userID uint64) ([]model.ConversationMember, error)
 	listConversationsByUserFn func(ctx context.Context, userID uint64) ([]model.Conversation, error)
+	listActiveGroupsByUserFn  func(ctx context.Context, userID uint64) ([]model.Conversation, error)
+	listActiveMembersFn       func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error)
+	countActiveMembersFn      func(ctx context.Context, conversationID uint64) (int64, error)
 	getMemberFn               func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error)
-	ensureMemberFn            func(ctx context.Context, conversationID, userID uint64) error
+	upsertMemberFn            func(ctx context.Context, member *model.ConversationMember) error
 	setVisibleFn              func(ctx context.Context, conversationID, userID uint64, visible bool) error
-	updateLastDeliveredFn     func(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	updateNameFn              func(ctx context.Context, conversationID uint64, name string) error
+	updateStatusFn            func(ctx context.Context, conversationID uint64, status model.ConversationStatus) error
+	updateMemberStatusFn      func(ctx context.Context, conversationID, userID uint64, status model.ConversationMemberStatus, visible bool) error
+	updateAllMemberStatusFn   func(ctx context.Context, conversationID uint64, status model.ConversationMemberStatus, visible bool) error
+	updateLastAckedFn         func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	updateLastReadFn          func(ctx context.Context, conversationID, userID, msgSeq uint64) error
+}
+
+func (s *stubConversationRepo) Create(ctx context.Context, conversation *model.Conversation) error {
+	if s.createFn != nil {
+		return s.createFn(ctx, conversation)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) GetByID(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+	if s.getByIDFn != nil {
+		return s.getByIDFn(ctx, conversationID)
+	}
+	return model.Conversation{}, nil
 }
 
 func (s *stubConversationRepo) GetOrCreateSingle(ctx context.Context, userA, userB uint64) (model.Conversation, error) {
 	if s.getOrCreateSingleFn != nil {
 		return s.getOrCreateSingleFn(ctx, userA, userB)
-	}
-	return model.Conversation{}, nil
-}
-
-func (s *stubConversationRepo) GetSingle(ctx context.Context, userA, userB uint64) (model.Conversation, error) {
-	if s.getSingleFn != nil {
-		return s.getSingleFn(ctx, userA, userB)
 	}
 	return model.Conversation{}, nil
 }
@@ -144,6 +167,27 @@ func (s *stubConversationRepo) ListConversationsByUser(ctx context.Context, user
 	return []model.Conversation{}, nil
 }
 
+func (s *stubConversationRepo) ListActiveGroupsByUser(ctx context.Context, userID uint64) ([]model.Conversation, error) {
+	if s.listActiveGroupsByUserFn != nil {
+		return s.listActiveGroupsByUserFn(ctx, userID)
+	}
+	return []model.Conversation{}, nil
+}
+
+func (s *stubConversationRepo) ListActiveMembers(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error) {
+	if s.listActiveMembersFn != nil {
+		return s.listActiveMembersFn(ctx, conversationID)
+	}
+	return []model.ConversationMember{}, nil
+}
+
+func (s *stubConversationRepo) CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error) {
+	if s.countActiveMembersFn != nil {
+		return s.countActiveMembersFn(ctx, conversationID)
+	}
+	return 0, nil
+}
+
 func (s *stubConversationRepo) GetMember(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
 	if s.getMemberFn != nil {
 		return s.getMemberFn(ctx, conversationID, userID)
@@ -151,9 +195,9 @@ func (s *stubConversationRepo) GetMember(ctx context.Context, conversationID, us
 	return model.ConversationMember{}, nil
 }
 
-func (s *stubConversationRepo) EnsureMember(ctx context.Context, conversationID, userID uint64) error {
-	if s.ensureMemberFn != nil {
-		return s.ensureMemberFn(ctx, conversationID, userID)
+func (s *stubConversationRepo) UpsertMember(ctx context.Context, member *model.ConversationMember) error {
+	if s.upsertMemberFn != nil {
+		return s.upsertMemberFn(ctx, member)
 	}
 	return nil
 }
@@ -165,9 +209,37 @@ func (s *stubConversationRepo) SetVisible(ctx context.Context, conversationID, u
 	return nil
 }
 
-func (s *stubConversationRepo) UpdateLastDeliveredMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error {
-	if s.updateLastDeliveredFn != nil {
-		return s.updateLastDeliveredFn(ctx, conversationID, userID, msgSeq)
+func (s *stubConversationRepo) UpdateName(ctx context.Context, conversationID uint64, name string) error {
+	if s.updateNameFn != nil {
+		return s.updateNameFn(ctx, conversationID, name)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) UpdateStatus(ctx context.Context, conversationID uint64, status model.ConversationStatus) error {
+	if s.updateStatusFn != nil {
+		return s.updateStatusFn(ctx, conversationID, status)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) UpdateMemberStatus(ctx context.Context, conversationID, userID uint64, status model.ConversationMemberStatus, visible bool) error {
+	if s.updateMemberStatusFn != nil {
+		return s.updateMemberStatusFn(ctx, conversationID, userID, status, visible)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) UpdateAllMemberStatus(ctx context.Context, conversationID uint64, status model.ConversationMemberStatus, visible bool) error {
+	if s.updateAllMemberStatusFn != nil {
+		return s.updateAllMemberStatusFn(ctx, conversationID, status, visible)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) UpdateLastAckedMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+	if s.updateLastAckedFn != nil {
+		return s.updateLastAckedFn(ctx, conversationID, userID, msgSeq)
 	}
 	return nil
 }
@@ -180,62 +252,70 @@ func (s *stubConversationRepo) UpdateLastReadMsgSeq(ctx context.Context, convers
 }
 
 type stubMessageRepo struct {
-	createFn                         func(ctx context.Context, msg *model.ChatMessage) error
-	listBetweenFn                    func(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error)
-	listConversationPendingFn        func(ctx context.Context, conversationID string, afterSeq, untilSeq uint64) ([]model.ChatMessage, error)
-	listConversationPendingForUserFn func(ctx context.Context, conversationID string, userID, afterSeq, untilSeq uint64) ([]model.ChatMessage, error)
-	getLatestByConversationFn        func(ctx context.Context, conversationID string) (model.ChatMessage, error)
-	countUnreadFn                    func(ctx context.Context, conversationID string, userID uint64, afterSeq uint64) (int64, error)
-	getByConversationMsgIDFn         func(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error)
+	createFn                   func(ctx context.Context, msg *model.Message) error
+	listConversationHistoryFn  func(ctx context.Context, conversationID uint64, limit int, beforeSeq, afterSeq uint64) ([]model.Message, bool, error)
+	listConversationAfterSeqFn func(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
+	listConversationRangeFn    func(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error)
+	getLatestByConversationFn  func(ctx context.Context, conversationID uint64) (model.Message, error)
+	getMaxSeqByConversationFn  func(ctx context.Context, conversationID uint64) (uint64, error)
+	listConversationIDsFn      func(ctx context.Context) ([]uint64, error)
+	countUnreadFn              func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error)
 }
 
-func (s *stubMessageRepo) Create(ctx context.Context, msg *model.ChatMessage) error {
+func (s *stubMessageRepo) Create(ctx context.Context, msg *model.Message) error {
 	if s.createFn != nil {
 		return s.createFn(ctx, msg)
 	}
 	return nil
 }
 
-func (s *stubMessageRepo) ListBetween(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error) {
-	if s.listBetweenFn != nil {
-		return s.listBetweenFn(ctx, userID, peerID, limit, beforeID)
+func (s *stubMessageRepo) ListConversationHistory(ctx context.Context, conversationID uint64, limit int, beforeSeq, afterSeq uint64) ([]model.Message, bool, error) {
+	if s.listConversationHistoryFn != nil {
+		return s.listConversationHistoryFn(ctx, conversationID, limit, beforeSeq, afterSeq)
 	}
-	return []model.ChatMessage{}, false, nil
+	return []model.Message{}, false, nil
 }
 
-func (s *stubMessageRepo) ListConversationPending(ctx context.Context, conversationID string, afterSeq, untilSeq uint64) ([]model.ChatMessage, error) {
-	if s.listConversationPendingFn != nil {
-		return s.listConversationPendingFn(ctx, conversationID, afterSeq, untilSeq)
+func (s *stubMessageRepo) ListConversationAfterSeq(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error) {
+	if s.listConversationAfterSeqFn != nil {
+		return s.listConversationAfterSeqFn(ctx, conversationID, afterSeq, limit)
 	}
-	return []model.ChatMessage{}, nil
+	return []model.Message{}, false, nil
 }
 
-func (s *stubMessageRepo) ListConversationPendingForUser(ctx context.Context, conversationID string, userID, afterSeq, untilSeq uint64) ([]model.ChatMessage, error) {
-	if s.listConversationPendingForUserFn != nil {
-		return s.listConversationPendingForUserFn(ctx, conversationID, userID, afterSeq, untilSeq)
+func (s *stubMessageRepo) ListConversationRangeAfterSeq(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error) {
+	if s.listConversationRangeFn != nil {
+		return s.listConversationRangeFn(ctx, conversationID, afterSeq, untilSeq, limit)
 	}
-	return []model.ChatMessage{}, nil
+	return []model.Message{}, false, nil
 }
 
-func (s *stubMessageRepo) GetLatestByConversation(ctx context.Context, conversationID string) (model.ChatMessage, error) {
+func (s *stubMessageRepo) GetLatestByConversation(ctx context.Context, conversationID uint64) (model.Message, error) {
 	if s.getLatestByConversationFn != nil {
 		return s.getLatestByConversationFn(ctx, conversationID)
 	}
-	return model.ChatMessage{}, nil
+	return model.Message{}, nil
 }
 
-func (s *stubMessageRepo) CountUnreadByConversation(ctx context.Context, conversationID string, userID uint64, afterSeq uint64) (int64, error) {
-	if s.countUnreadFn != nil {
-		return s.countUnreadFn(ctx, conversationID, userID, afterSeq)
+func (s *stubMessageRepo) GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error) {
+	if s.getMaxSeqByConversationFn != nil {
+		return s.getMaxSeqByConversationFn(ctx, conversationID)
 	}
 	return 0, nil
 }
 
-func (s *stubMessageRepo) GetByConversationAndMsgID(ctx context.Context, conversationID, msgID string) (model.ChatMessage, error) {
-	if s.getByConversationMsgIDFn != nil {
-		return s.getByConversationMsgIDFn(ctx, conversationID, msgID)
+func (s *stubMessageRepo) ListConversationIDs(ctx context.Context) ([]uint64, error) {
+	if s.listConversationIDsFn != nil {
+		return s.listConversationIDsFn(ctx)
 	}
-	return model.ChatMessage{}, nil
+	return []uint64{}, nil
+}
+
+func (s *stubMessageRepo) CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
+	if s.countUnreadFn != nil {
+		return s.countUnreadFn(ctx, conversationID, userID, afterSeq)
+	}
+	return 0, nil
 }
 
 type stubFriendRequestRepo struct {

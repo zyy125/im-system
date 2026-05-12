@@ -37,7 +37,7 @@ type Hub struct {
 }
 
 type OfflineMessageLoader interface {
-	ListOfflineMessages(ctx context.Context, userID uint64) ([]model.ChatMessage, error)
+	ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error)
 }
 
 func NewHub(
@@ -90,27 +90,10 @@ func (h *Hub) Run(ctx context.Context) {
 			log.Printf("Client %d unregistered, total %d clients", client.UserID, len(h.Clients))
 
 		case msg := <-h.Forward:
-			target, ok := h.Clients[msg.To]
-			if !ok {
-				log.Printf("User %d is offline, realtime forward skipped and offline sync will rely on persisted messages", msg.To)
-				continue
-			}
-			if !h.ReadyClients[msg.To] {
-				h.enqueuePending(msg.To, msg.Content)
-				continue
-			}
-			h.trySend(target, msg.Content)
+			h.forwardLocal(msg)
 
 		case msg := <-h.LifecycleForward:
-			target, ok := h.Clients[msg.To]
-			if !ok {
-				continue
-			}
-			if !h.ReadyClients[msg.To] {
-				h.enqueuePending(msg.To, msg.Content)
-				continue
-			}
-			h.trySend(target, msg.Content)
+			h.forwardLocal(msg)
 
 		case result := <-h.ClientBootstrapped:
 			current, ok := h.Clients[result.Client.UserID]
@@ -136,6 +119,20 @@ func (h *Hub) Run(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (h *Hub) forwardLocal(msg *ForwardMessage) bool {
+	target, ok := h.Clients[msg.To]
+	if !ok {
+		log.Printf("User %d is offline, realtime forward skipped and offline sync will rely on persisted messages", msg.To)
+		return false
+	}
+	if !h.ReadyClients[msg.To] {
+		h.enqueuePending(msg.To, msg.Content)
+		return true
+	}
+	h.trySend(target, msg.Content)
+	return true
 }
 
 func closeClientConn(client *Client) {

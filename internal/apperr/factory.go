@@ -106,6 +106,30 @@ func ConversationNotAccessible() *Error {
 	return Forbidden(CodeConversationNotAccessible, "conversation is not accessible")
 }
 
+func ConversationInvalidName() *Error {
+	return New(CodeConversationInvalidName, "conversation name is invalid")
+}
+
+func ConversationNoPermission(action string) *Error {
+	return Forbidden(CodeConversationNoPermission, "no permission to "+action+" this conversation")
+}
+
+func ConversationDismissed() *Error {
+	return Conflict(CodeConversationDismissed, "conversation has been dismissed")
+}
+
+func ConversationMemberLimitExceeded() *Error {
+	return Conflict(CodeConversationMemberLimit, "conversation member limit exceeded")
+}
+
+func ConversationOwnerCannotLeave() *Error {
+	return Conflict(CodeConversationOwnerCannotLeave, "conversation owner cannot leave")
+}
+
+func ConversationInvalidType() *Error {
+	return New(CodeConversationInvalidType, "conversation type is invalid")
+}
+
 func MessageInvalidPeerID() *Error {
 	return New(CodeMessageInvalidPeerID, "invalid peer_id")
 }

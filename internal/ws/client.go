@@ -22,6 +22,7 @@ type Client struct {
 	Send        chan []byte     `json:"send"`
 	Hub         *Hub            `json:"hub"`
 	ChatHandler ChatSendHandler `json:"-"`
+	AckHandler  MessageAckHandler
 }
 
 func (c *Client) ReadPump(ctx context.Context) {
@@ -44,25 +45,93 @@ func (c *Client) ReadPump(ctx context.Context) {
 			break
 		}
 
-		req, err := DecodeClientChatSend(message)
+		env, err := DecodeEnvelope(message)
 		if err != nil {
 			log.Printf("Client %d decode client message error: %v", c.UserID, err)
 			c.writeError(err)
 			continue
 		}
-		if c.ChatHandler == nil {
-			err := apperr.Internal("chat handler unavailable", nil)
-			log.Printf("Client %d chat handler unavailable", c.UserID)
-			c.writeError(err)
-			continue
-		}
-		forwardMsg, err := c.ChatHandler.HandleChatSend(ctx, c.UserID, req)
-		if err != nil {
-			log.Printf("Client %d handle chat send error: %v", c.UserID, err)
-			c.writeError(err)
-			continue
-		}
 
+		switch env.Type {
+		case EventTypeMessageSend:
+			req, err := DecodeClientMessageSendData(env.Data)
+			if err != nil {
+				log.Printf("Client %d decode message send payload error: %v", c.UserID, err)
+				c.writeError(err)
+				continue
+			}
+			if c.ChatHandler == nil {
+				err := apperr.Internal("chat handler unavailable", nil)
+				log.Printf("Client %d chat handler unavailable", c.UserID)
+				c.writeError(err)
+				continue
+			}
+			forwardMsgs, err := c.ChatHandler.HandleMessageSend(ctx, c.UserID, req)
+			if err != nil {
+				log.Printf("Client %d handle message send error: %v", c.UserID, err)
+				c.writeError(err)
+				continue
+			}
+			for _, forwardMsg := range forwardMsgs {
+				select {
+				case c.Hub.Forward <- forwardMsg:
+				default:
+					log.Printf("Client %d forward message dropped", c.UserID)
+				}
+			}
+
+		case EventTypeMessageDelivered:
+			req, err := DecodeClientMessageDeliveredData(env.Data)
+			if err != nil {
+				log.Printf("Client %d decode message delivered payload error: %v", c.UserID, err)
+				c.writeError(err)
+				continue
+			}
+			if c.AckHandler == nil {
+				err := apperr.Internal("receipt handler unavailable", nil)
+				log.Printf("Client %d receipt handler unavailable", c.UserID)
+				c.writeError(err)
+				continue
+			}
+			forwardMsgs, err := c.AckHandler.HandleMessageDelivered(ctx, c.UserID, req)
+			if err != nil {
+				log.Printf("Client %d handle message delivered error: %v", c.UserID, err)
+				c.writeError(err)
+				continue
+			}
+			c.forwardAll(forwardMsgs)
+
+		case EventTypeMessageRead:
+			req, err := DecodeClientMessageReadData(env.Data)
+			if err != nil {
+				log.Printf("Client %d decode message read payload error: %v", c.UserID, err)
+				c.writeError(err)
+				continue
+			}
+			if c.AckHandler == nil {
+				err := apperr.Internal("receipt handler unavailable", nil)
+				log.Printf("Client %d receipt handler unavailable", c.UserID)
+				c.writeError(err)
+				continue
+			}
+			forwardMsgs, err := c.AckHandler.HandleMessageRead(ctx, c.UserID, req)
+			if err != nil {
+				log.Printf("Client %d handle message read error: %v", c.UserID, err)
+				c.writeError(err)
+				continue
+			}
+			c.forwardAll(forwardMsgs)
+
+		default:
+			err := apperr.MessageInvalidPayload()
+			log.Printf("Client %d received unsupported ws event type=%s", c.UserID, env.Type)
+			c.writeError(err)
+		}
+	}
+}
+
+func (c *Client) forwardAll(forwardMsgs []*ForwardMessage) {
+	for _, forwardMsg := range forwardMsgs {
 		select {
 		case c.Hub.Forward <- forwardMsg:
 		default:

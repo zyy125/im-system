@@ -107,7 +107,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	err = db.AutoMigrate(
 		&model.User{},
-		&model.ChatMessage{},
+		&model.Message{},
 		&model.Friend{},
 		&model.FriendRequest{},
 		&model.Conversation{},
@@ -121,6 +121,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	conversationRepo := repository.NewConversationRepo(db)
 	messageRepo := repository.NewMessageRepo(db)
 	messageTxManager := repository.NewMessageTxManager(db)
+	messageStateRepo := repository.NewInMemoryMessageStateRepo()
 	presenceRepo := newInMemoryPresenceRepo()
 	blacklistRepo := newInMemoryTokenBlacklistRepo()
 
@@ -131,9 +132,11 @@ func newTestEnv(t *testing.T) *testEnv {
 		},
 	}
 
-	conversationSvc := service.NewConversationService(conversationRepo, messageRepo, userRepo, presenceRepo, friendRepo)
+	seqAllocator := service.NewSeqAllocator(messageRepo, messageStateRepo)
+	conversationSvc := service.NewConversationServiceWithRuntime(conversationRepo, messageRepo, userRepo, presenceRepo, messageTxManager, seqAllocator)
 	friendSvc := service.NewFriendService(friendRepo, userRepo, presenceRepo, conversationRepo)
-	messageSvc := service.NewMessageService(messageRepo, conversationRepo, messageTxManager)
+	messageSvc := service.NewMessageService(messageRepo, conversationRepo)
+	messageSendSvc := service.NewMessageSendService(messageTxManager, seqAllocator)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	hub := ws.NewHub(presenceRepo, conversationSvc, friendRepo)
@@ -141,11 +144,11 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	engine := router.InitRouter(&router.InitRouterParams{
 		AuthHandler:          handler.NewAuthHandler(service.NewAuthService(userRepo, &cfg.JWT, blacklistRepo)),
-		WSHandler:            handler.NewWSHandler(hub, messageSvc, friendSvc, conversationSvc),
+		WSHandler:            handler.NewWSHandler(hub, messageSendSvc, messageSvc, conversationSvc),
 		UserHandler:          handler.NewUserHandler(service.NewUserService(userRepo, presenceRepo)),
 		FriendHandler:        handler.NewFriendHandler(friendSvc),
 		FriendRequestHandler: handler.NewFriendRequestHandler(service.NewFriendRequestService(friendRequestRepo, friendSvc, userRepo, presenceRepo)),
-		MessageHandler:       handler.NewMessageHandler(messageSvc, friendSvc, conversationSvc),
+		MessageHandler:       handler.NewMessageHandler(messageSvc, conversationSvc),
 		ConversationHandler:  handler.NewConversationHandler(conversationSvc),
 		BlacklistRepo:        blacklistRepo,
 		JwtCfg:               &cfg.JWT,
@@ -234,7 +237,14 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 	bobID, bobToken := registerAndLogin(t, env, "bob", "secret123")
 	makeFriends(t, env, aliceToken, bobToken, bobID)
 
-	openResp := doJSON(t, env, http.MethodPost, "/api/v1/conversations/direct/"+uintToString(bobID)+"/open", aliceToken, nil)
+	friendsResp := doJSON(t, env, http.MethodGet, "/api/v1/friends", aliceToken, nil)
+	var friendsBody dto.FriendListResp
+	decodeData(t, friendsResp, &friendsBody)
+	require.Len(t, friendsBody.Friends, 1)
+	assert.Equal(t, bobID, friendsBody.Friends[0].UserID)
+	require.NotZero(t, friendsBody.Friends[0].ConversationID)
+
+	openResp := doJSON(t, env, http.MethodPost, "/api/v1/conversations/"+uintToString(friendsBody.Friends[0].ConversationID)+"/open", aliceToken, nil)
 	var openBody dto.OpenConversationResp
 	decodeData(t, openResp, &openBody)
 	assert.Equal(t, bobID, openBody.Conversation.Peer.ID)
@@ -247,24 +257,43 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 
 	msgID := "msg-e2e-1"
 	require.NoError(t, aliceConn.WriteJSON(map[string]any{
-		"type":    ws.EventTypeChatSend,
+		"type":    ws.EventTypeMessageSend,
 		"version": ws.ProtocolVersion,
 		"data": map[string]any{
-			"msg_id":  msgID,
-			"to":      bobID,
-			"content": "hello bob",
+			"msg_id":          msgID,
+			"conversation_id": openBody.Conversation.ID,
+			"content":         "hello bob",
 		},
 	}))
 
-	delivered := readChatMessage(t, bobConn, msgID, 5*time.Second)
-	assert.Equal(t, msgID, delivered.MsgID)
-	assert.Equal(t, aliceID, delivered.From)
-	assert.Equal(t, bobID, delivered.To)
-	assert.Equal(t, "hello bob", delivered.Content)
-	assert.Equal(t, uintToString(openBody.Conversation.ID), delivered.ConversationID)
+	sent := readMessageEvent(t, aliceConn, ws.EventTypeMessageSent, msgID, 5*time.Second)
+	assert.Equal(t, msgID, sent.MsgID)
+	assert.Equal(t, aliceID, sent.From)
+	assert.Equal(t, "hello bob", sent.Content)
+	assert.Equal(t, openBody.Conversation.ID, sent.ConversationID)
+
+	delivered := readMessageEvent(t, bobConn, ws.EventTypeMessageCreated, msgID, 5*time.Second)
+	assert.Equal(t, sent.Seq, delivered.Seq)
+
+	require.NoError(t, bobConn.WriteJSON(map[string]any{
+		"type":    ws.EventTypeMessageDelivered,
+		"version": ws.ProtocolVersion,
+		"data": map[string]any{
+			"conversation_id": openBody.Conversation.ID,
+			"delivered_seq":   delivered.Seq,
+		},
+	}))
+	deliveryReceipt := readDeliveryReceipt(t, aliceConn, openBody.Conversation.ID, bobID, delivered.Seq, 5*time.Second)
+	assert.Equal(t, delivered.Seq, deliveryReceipt.DeliveredSeq)
+
+	readResp := doJSON(t, env, http.MethodPost, "/api/v1/messages/read", bobToken, map[string]any{
+		"conversation_id": openBody.Conversation.ID,
+		"read_seq":        delivered.Seq,
+	})
+	assert.Equal(t, "ok", readResp.Code)
 
 	require.Eventually(t, func() bool {
-		historyResp := doJSON(t, env, http.MethodGet, "/api/v1/messages/history?peer_id="+uintToString(bobID), aliceToken, nil)
+		historyResp := doJSON(t, env, http.MethodGet, "/api/v1/messages/history?conversation_id="+uintToString(openBody.Conversation.ID), aliceToken, nil)
 		var history dto.MessageHistoryResp
 		decodeData(t, historyResp, &history)
 		if len(history.Messages) == 0 {
@@ -272,6 +301,101 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 		}
 		return history.Messages[0].MsgID == msgID
 	}, 5*time.Second, 100*time.Millisecond)
+
+	syncResp := doJSON(t, env, http.MethodGet, "/api/v1/messages/sync?conversation_id="+uintToString(openBody.Conversation.ID)+"&after_seq=0", bobToken, nil)
+	var syncBody dto.MessageSyncResp
+	decodeData(t, syncResp, &syncBody)
+	require.NotEmpty(t, syncBody.Messages)
+	assert.Equal(t, msgID, syncBody.Messages[len(syncBody.Messages)-1].MsgID)
+}
+
+func TestGolden_CreateGroupAndSendGroupMessage(t *testing.T) {
+	env := newTestEnv(t)
+
+	aliceID, aliceToken := registerAndLogin(t, env, "alice", "secret123")
+	_, bobToken := registerAndLogin(t, env, "bob", "secret123")
+	charlieID, charlieToken := registerAndLogin(t, env, "charlie", "secret123")
+
+	createResp := doJSON(t, env, http.MethodPost, "/api/v1/conversations/groups", aliceToken, map[string]any{
+		"name":       "project",
+		"member_ids": []uint64{charlieID},
+	})
+	assert.Equal(t, "ok", createResp.Code)
+
+	var createBody dto.GroupConversationResp
+	decodeData(t, createResp, &createBody)
+	require.NotZero(t, createBody.Conversation.ID)
+
+	aliceConn := openWebSocket(t, env, aliceToken)
+	defer aliceConn.Close()
+	charlieConn := openWebSocket(t, env, charlieToken)
+	defer charlieConn.Close()
+	bobConn := openWebSocket(t, env, bobToken)
+	defer bobConn.Close()
+
+	msgID := "msg-group-1"
+	require.NoError(t, aliceConn.WriteJSON(map[string]any{
+		"type":    ws.EventTypeMessageSend,
+		"version": ws.ProtocolVersion,
+		"data": map[string]any{
+			"msg_id":          msgID,
+			"conversation_id": createBody.Conversation.ID,
+			"content":         "hello group",
+		},
+	}))
+
+	charlieDelivered := readMessageEvent(t, charlieConn, ws.EventTypeMessageCreated, msgID, 5*time.Second)
+	assert.Equal(t, msgID, charlieDelivered.MsgID)
+	assert.Equal(t, aliceID, charlieDelivered.From)
+	assert.Equal(t, createBody.Conversation.ID, charlieDelivered.ConversationID)
+	assert.Equal(t, "hello group", charlieDelivered.Content)
+
+	bobConn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	_, _, err := bobConn.ReadMessage()
+	assert.Error(t, err)
+
+	require.Eventually(t, func() bool {
+		historyResp := doJSON(t, env, http.MethodGet, "/api/v1/messages/history?conversation_id="+uintToString(createBody.Conversation.ID), charlieToken, nil)
+		var history dto.MessageHistoryResp
+		decodeData(t, historyResp, &history)
+		if len(history.Messages) == 0 {
+			return false
+		}
+		return history.Messages[len(history.Messages)-1].MsgID == msgID
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func TestGolden_GroupListReturnsHiddenGroups(t *testing.T) {
+	env := newTestEnv(t)
+
+	_, aliceToken := registerAndLogin(t, env, "alice", "secret123")
+	charlieID, _ := registerAndLogin(t, env, "charlie", "secret123")
+
+	createResp := doJSON(t, env, http.MethodPost, "/api/v1/conversations/groups", aliceToken, map[string]any{
+		"name":       "project",
+		"member_ids": []uint64{charlieID},
+	})
+	assert.Equal(t, "ok", createResp.Code)
+
+	var createBody dto.GroupConversationResp
+	decodeData(t, createResp, &createBody)
+	require.NotZero(t, createBody.Conversation.ID)
+
+	hideResp := doJSON(t, env, http.MethodPost, "/api/v1/conversations/"+uintToString(createBody.Conversation.ID)+"/hide", aliceToken, nil)
+	assert.Equal(t, "ok", hideResp.Code)
+
+	msgListResp := doJSON(t, env, http.MethodGet, "/api/v1/conversations", aliceToken, nil)
+	var msgList dto.ConversationListResp
+	decodeData(t, msgListResp, &msgList)
+	assert.Empty(t, msgList.Conversations)
+
+	groupListResp := doJSON(t, env, http.MethodGet, "/api/v1/conversations/groups", aliceToken, nil)
+	var groupList dto.ConversationListResp
+	decodeData(t, groupListResp, &groupList)
+	require.Len(t, groupList.Conversations, 1)
+	assert.Equal(t, createBody.Conversation.ID, groupList.Conversations[0].ID)
+	assert.Equal(t, "project", groupList.Conversations[0].Name)
+	assert.Equal(t, model.ConversationTypeGroup, groupList.Conversations[0].Type)
 }
 
 func registerAndLogin(t *testing.T, env *testEnv, username, password string) (uint64, string) {
@@ -325,7 +449,7 @@ func openWebSocket(t *testing.T, env *testEnv, token string) *websocket.Conn {
 	return conn
 }
 
-func readChatMessage(t *testing.T, conn *websocket.Conn, wantMsgID string, timeout time.Duration) model.ChatMessage {
+func readMessageEvent(t *testing.T, conn *websocket.Conn, wantType, wantMsgID string, timeout time.Duration) model.Message {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -336,19 +460,45 @@ func readChatMessage(t *testing.T, conn *websocket.Conn, wantMsgID string, timeo
 
 		var env ws.Envelope
 		require.NoError(t, json.Unmarshal(payload, &env))
-		if env.Type != ws.EventTypeChatMessage {
+		if env.Type != wantType {
 			continue
 		}
 
-		var msg model.ChatMessage
+		var msg model.Message
 		require.NoError(t, json.Unmarshal(env.Data, &msg))
 		if msg.MsgID == wantMsgID {
 			return msg
 		}
 	}
 
-	t.Fatalf("chat message %s not received before timeout", wantMsgID)
-	return model.ChatMessage{}
+	t.Fatalf("message %s type %s not received before timeout", wantMsgID, wantType)
+	return model.Message{}
+}
+
+func readDeliveryReceipt(t *testing.T, conn *websocket.Conn, conversationID, userID, deliveredSeq uint64, timeout time.Duration) ws.MessageDeliveredData {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		require.NoError(t, conn.SetReadDeadline(deadline))
+		_, payload, err := conn.ReadMessage()
+		require.NoError(t, err)
+
+		var env ws.Envelope
+		require.NoError(t, json.Unmarshal(payload, &env))
+		if env.Type != ws.EventTypeMessageDelivered {
+			continue
+		}
+
+		var receipt ws.MessageDeliveredData
+		require.NoError(t, json.Unmarshal(env.Data, &receipt))
+		if receipt.ConversationID == conversationID && receipt.UserID == userID && receipt.DeliveredSeq == deliveredSeq {
+			return receipt
+		}
+	}
+
+	t.Fatalf("delivery receipt conversation=%d user=%d seq=%d not received before timeout", conversationID, userID, deliveredSeq)
+	return ws.MessageDeliveredData{}
 }
 
 func doJSON(t *testing.T, env *testEnv, method, path, token string, body any) apiResponse {

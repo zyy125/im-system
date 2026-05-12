@@ -186,38 +186,38 @@
 
 ### 5.1 入口
 
-- HTTP 接口：`POST /api/v1/conversations/direct/{id}/open`
+- HTTP 接口：`POST /api/v1/conversations/{id}/open`
 - 代码入口：
   - [conversation_handler.go](/home/zhuyin/im-system/internal/handler/conversation_handler.go)
   - [conversation_service.go](/home/zhuyin/im-system/internal/service/conversation_service.go)
 
 ### 5.2 链路步骤
 
-1. 用户在前端点击某个好友，调用“打开单聊会话”接口。
-2. `ConversationService.OpenDirectConversation` 执行业务逻辑：
-   - 校验当前用户 ID 和好友 ID 不为空。
-   - 通过 `FriendRepo.AreFriends` 校验双方必须已经是好友。
-   - 调用 `ConversationRepo.GetOrCreateSingle` 获取或创建单聊会话。
-   - 调用 `ConversationRepo.SetVisible(..., true)` 把当前用户对该会话的显示状态恢复为可见。
+1. 用户在前端点击某个会话入口。
+2. 这个入口可以来自：
+   - 消息栏中的已有会话
+   - 好友列表中对应单聊的 `conversation_id`
+   - 群聊列表中对应群会话的 `conversation_id`
+3. `ConversationService.OpenConversation` 执行业务逻辑：
+   - 校验当前用户是否是该会话的有效成员。
+   - 如果当前用户此前把该会话隐藏过，则调用 `ConversationRepo.SetVisible(..., true)` 恢复显示。
    - 调用 `buildConversationSummary` 组装会话摘要返回给前端。
 
 ### 5.3 数据变化
 
-- 如果此前会话不存在，会新建：
-  - `conversations`
-  - `conversation_members`
+- 打开会话本身不会新建单聊或群聊。
 - 如果会话已存在但被当前用户隐藏过：
   - 只会把当前用户对应的 `conversation_members.visible` 改回 `true`
 
 ### 5.4 关键语义
 
-- “打开会话”不是“重新创建一个新的会话”。
-- 单聊会话在当前设计中是天然幂等的，由 `single_key=min(a,b):max(a,b)` 唯一确定。
+- “打开会话”只负责恢复和进入，不负责创建。
+- 单聊会话在成为好友时就应已自动创建并稳定绑定到 `conversation_id`。
 
 ### 5.5 当前收益
 
-- 你可以安全地从好友列表发起聊天，而不会重复造出多个单聊会话。
-- 即使用户曾经隐藏过会话，也可以通过“打开会话”恢复显示。
+- 前端所有聊天入口都可以统一到 `conversation_id`。
+- 即使用户曾经隐藏过会话，也可以通过一次标准 `OpenConversation` 恢复显示。
 
 ---
 
@@ -237,11 +237,11 @@
 
 ```json
 {
-  "type": "chat.send",
+  "type": "message.send",
   "version": 1,
   "data": {
     "msg_id": "msg_xxx",
-    "to": 10,
+    "conversation_id": 12,
     "content": "hello"
   }
 }
@@ -252,40 +252,38 @@
 1. 用户先通过 WebSocket 建立连接。
 2. `Client.ReadPump` 持续读取客户端发来的消息。
 3. 服务端做第一层校验：
-   - `type` 必须为 `chat.send`
+   - `type` 必须为 `message.send`
    - `data.msg_id` 不能为空
-   - `data.to` 不能为空
-   - 当前用户和目标用户必须已经是好友
-4. 服务端通过 `ConversationProvider.EnsureDirectConversationID` 获取双方单聊 `conversation_id`。
-5. 服务端补齐：
-   - `from`
-   - `conversation_id`
-   - `send_time`
-6. 服务端调用 `MessageService.SaveMessage`，在一个事务里完成：
-   - `MessageRepo.Create` 落库
-   - `ConversationRepo.EnsureMember` 确保双方都是会话成员
-   - `UpdateLastDeliveredMsgSeq` 推进接收方的 `LastDeliveredMsgSeq`
-   - `SetVisible(..., true)` 恢复双方会话可见状态
-7. 持久化成功后，服务端再调用 `Hub.Forward` 推送 `chat.message` 实时消息。
+   - `data.conversation_id` 不能为空
+   - 当前用户必须是该会话的活跃成员
+4. 服务端补齐：
+	   - `from`
+	   - `send_time`（统一由服务端生成）
+	5. 服务端调用 `MessageSendService.SendTextMessage`，在一个事务里完成：
+	   - `MessageRepo.Create` 落库
+	   - `ListActiveMembers` 找到该会话当前应接收消息的成员
+	   - 推进发送方自己的 `last_acked_msg_seq` 和 `last_read_msg_seq`
+	   - `SetVisible(..., true)` 恢复活跃成员会话可见状态
+6. 持久化成功后，服务端向发送方推送 `message.sent`，向其他在线活跃成员推送 `message.created`。
 
 ### 6.4 持久化与会话状态更新
 
-`MessageService.SaveMessage` 执行以下逻辑：
+`MessageSendService.SendTextMessage` 执行以下逻辑：
 
-1. 校验 `msg_id`、`conversation_id`、`from`、`to`、`content`
-2. 解析 `conversation_id`
-3. 若客户端未传 `send_time`，则补当前时间
-4. 在单个数据库事务内：
-   - 调用 `MessageRepo.Create` 落库
-   - 通过 `ConversationRepo.EnsureMember` 确保发送方和接收方都是会话成员
-   - 调用 `UpdateLastDeliveredMsgSeq` 推进接收方的 `LastDeliveredMsgSeq`
-   - 调用 `SetVisible(..., true)`，确保双方会话重新显示
+1. 校验 `msg_id`、`conversation_id`、`from`、`content`
+2. 校验发送方必须是该会话的活跃成员
+3. 统一由服务端生成 `send_time`
+	4. 在单个数据库事务内：
+	   - 调用 `MessageRepo.Create` 落库
+	   - 查询会话全部活跃成员
+	   - 推进发送方自己的送达和已读游标
+	   - 调用 `SetVisible(..., true)`，确保当前活跃成员会话重新显示
 
-这一步完成后，接收方看到的实时消息和后续离线补推、已读推进，都会基于同一条已经持久化成功的消息记录。
+这一步完成后，群聊和单聊都以同一条已提交消息作为事实来源；接收方送达和已读由后续 `message.delivered` / `message.read` 推进。
 
 ### 6.5 实时转发链路
 
-`Hub` 收到 `ForwardMessage` 后，会向目标用户推送 `chat.message` envelope：
+`Hub` 收到 `ForwardMessage` 后，会向目标用户推送对应 envelope：
 
 - 如果目标用户当前在线且已经 ready：
   - 直接把消息写入对方连接的 `Send` 通道
@@ -298,23 +296,21 @@
 
 ### 6.6 当前实现的关键语义
 
-- 当前发送消息没有“发送成功回执”单独返回给发送方。
-- 当前发送方主要依赖：
-  - 自己前端本地先渲染
-  - 或后续重新拉历史消息
-- 接收方收到的实时消息，已经对应一条成功入库并推进过 `LastDeliveredMsgSeq` 的记录。
-- 这能避免“消息先显示，但已读推进时数据库里还没有这条消息”的竞态。
+- 发送方收到 `message.sent`，表示消息已经完成 DB commit。
+- 接收方收到 `message.created`，表示消息已经进入 MySQL 真源。
+- 接收方收到后发送 `message.delivered`，服务端单调推进 `last_acked_msg_seq`。
+- 用户读到消息后发送 `message.read` 或调用 HTTP 已读接口，服务端单调推进 `last_read_msg_seq`。
 
 ### 6.7 这条链路的工程意义
 
 这是你项目里比较像真实 IM 系统的一条链路，因为它已经把：
 
-- 同步持久化
-- 实时转发
-- 会话索引更新
-- 离线补推前置条件维护
+	- 同步持久化
+	- 实时转发
+	- 会话索引更新
+	- ACK/已读游标推进
 
-串成了一条完整闭环。
+	串成了一条完整闭环。
 
 ---
 
@@ -330,22 +326,22 @@
 
 ### 7.2 查询参数
 
-- `peer_id`
-  - 当前要查看历史消息的好友用户 ID
+- `conversation_id`
+  - 当前要查看历史消息的会话 ID
 - `limit`
   - 本次最多返回多少条历史消息，默认 20，最大 100
-- `before_id`
-  - 可选。若传入，则表示“继续查询这条消息 ID 之前的更早消息”
+- `before_seq`
+  - 可选。若传入，则表示“继续查询这条消息 seq 之前的更早消息”
 
 ### 7.3 当前分页语义
 
-历史消息现在按消息主键 `id` 做游标分页，而不是一次性把整个会话历史全拉下来：
+历史消息按会话内业务序号 `seq` 做游标分页，而不是一次性把整个会话历史全拉下来：
 
-1. 前端第一次打开会话时，不传 `before_id`
-2. 后端按双方消息查询最新一页
-3. 若前端继续上翻，则携带 `before_id`
-4. 后端查询 `id < before_id` 的更早消息
-5. SQL 在库内按 `id DESC` 取一页，再在返回前翻转成 `id ASC`
+1. 前端第一次打开会话时，不传 `before_seq`
+2. 后端按会话消息查询最新一页
+3. 若前端继续上翻，则携带 `before_seq`
+4. 后端查询 `seq < before_seq` 的更早消息
+5. SQL 在库内按 `seq DESC` 取一页，再在返回前翻转成 `seq ASC`
 6. 所以前端渲染时看到的顺序仍然是“从旧到新”
 
 ### 7.4 返回结构
@@ -356,8 +352,8 @@
   - 当前这一页的消息，顺序为从旧到新
 - `has_more`
   - 是否还存在更早的历史消息
-- `next_before_id`
-  - 如果 `has_more=true`，前端下一次继续上翻时应传入的 `before_id`
+- `next_before_seq`
+  - 如果 `has_more=true`，前端下一次继续上翻时应传入的 `before_seq`
 
 ### 7.5 前端交互方式
 
@@ -365,18 +361,18 @@
 
 1. 打开会话时先拉最近一页
 2. 如果当前会话存在离线补推消息，前端会先把离线消息和这页历史消息合并
-3. 用户把聊天框滚到顶部时，再携带 `before_id=next_before_id` 请求更早一页
+3. 用户把聊天框滚到顶部时，再携带 `before_seq=next_before_seq` 请求更早一页
 4. 新加载的一页会插入到消息列表顶部
 5. 前端会修正滚动位置，避免页面突然跳动
 
-### 7.6 为什么不用 `send_time` 做分页游标
+### 7.6 为什么只用 `seq` 做分页游标
 
 因为 `send_time` 可能重复：
 
 - 多条消息可能落在同一毫秒
 - 如果只用时间戳做 `< before` 条件，可能出现漏消息
 
-所以当前改成用数据库主键 `id` 做历史分页游标，这样更稳定，也和 `LastReadMsgSeq` / `LastDeliveredMsgSeq` 的消息序号语义更统一。
+`seq` 是会话内单调递增的业务序号，和 sync、delivered、read 共用同一套语义；数据库主键 `id` 只用于定位，不承担业务顺序。
 
 ---
 
@@ -400,10 +396,10 @@
 4. 当前 `OfflineLoader` 实现是 `ConversationService.ListOfflineMessages`。
 5. `ListOfflineMessages` 会：
    - 查询当前用户参与的所有 `conversation_members`
-   - 找出满足 `LastReadMsgSeq < LastDeliveredMsgSeq` 的会话
-   - 对每个会话查询 `(LastReadMsgSeq, LastDeliveredMsgSeq]` 区间内的消息
+   - 以 `max(joined_msg_seq, last_acked_msg_seq)` 为起点
+   - 对每个会话查询 `(after_seq, 当前最大 seq]` 区间内的 MySQL 已提交消息
    - 合并所有会话的结果
-   - 按 `send_time ASC`，若同时间再按 `id ASC` 排序
+   - 按 `send_time ASC`，若同时间再按 `conversation_id ASC, seq ASC` 排序
 6. `Hub` 收到 `ClientBootstrapped` 事件后：
    - 先把离线消息刷给客户端
    - 再把 bootstrap 期间积压的 pending 消息刷给客户端
@@ -411,30 +407,26 @@
 
 ### 8.3 数据依赖
 
-离线补推依赖两个核心游标：
+离线补推依赖两个核心值：
 
-- `LastDeliveredMsgSeq`
-  表示“系统认为已经应该投递给这个用户的最新消息序号”
-- `LastReadMsgSeq`
-  表示“用户已经读到的最新消息序号”
+- `last_acked_msg_seq`：客户端已连续收到的最大 `seq`
+- `joined_msg_seq`：成员可见历史的起点
 
-离线消息补推区间是：
-
-`LastReadMsgSeq < message.id <= LastDeliveredMsgSeq`
+离线消息补推区间是：`max(joined_msg_seq, last_acked_msg_seq) < seq <= current_max_seq`。
 
 ### 8.4 关键语义
 
-- 离线补推不是简单地查“所有未读消息”。
-- 它查的是“系统已经投递责任成立，但用户还没读掉的消息”。
-- 当前项目里，消息主键 `chat_msgs.id` 就承担了消息序号 `seq` 的角色。
+- 离线补推不是查未读消息，而是查客户端尚未确认收到的消息。
+- 是否已读只影响未读数和 read 回执，不影响离线补推事实范围。
+- MySQL `messages` 是唯一真源；Redis/recent cache 不定义消息事实。
 
 ### 8.5 为什么当前设计合理
 
 这样设计的好处是：
 
-- 不需要额外维护一套独立的消息序列表。
-- 查询区间简单，SQL 也更直接。
-- 同一个会话内可以稳定按主键递增推进已投递和已读游标。
+- history、sync、实时流、离线补推都围绕同一个 `seq`。
+- 断线重连只需要从 `last_acked_msg_seq` 后继续补拉。
+- 已读游标不会导致未读但已送达的消息被重复补推。
 
 ---
 
@@ -451,8 +443,8 @@
 
 ```json
 {
-  "conversation_id": "1",
-  "msg_id": "msg_xxx"
+  "conversation_id": 1,
+  "read_seq": 123
 }
 ```
 
@@ -461,11 +453,11 @@
 1. 客户端在某个会话中，把自己“已经读到的最后一条消息”告诉后端。
 2. `MessageHandler.MarkRead` 校验：
    - `conversation_id` 不能为空
-   - `msg_id` 不能为空
+   - `read_seq` 不能为空
 3. `ConversationService.MarkRead` 执行：
-   - 解析 `conversation_id`
-   - 用 `conversation_id + msg_id` 查询消息记录
-   - 取出该消息的数据库主键 `id`
+   - 校验当前用户是会话活跃成员
+   - 校验 `read_seq > joined_msg_seq`
+   - 校验 `read_seq <= last_acked_msg_seq`
    - 调用 `ConversationRepo.UpdateLastReadMsgSeq`
 4. `UpdateLastReadMsgSeq` 只会在“新消息序号比当前已读序号更大”时推进，保证单调递增。
 
@@ -473,20 +465,20 @@
 
 - 更新 `conversation_members.last_read_msg_seq`
 
-### 9.5 为什么不用 `msg_id` 直接做已读游标
+### 9.5 为什么用 `read_seq` 做已读游标
 
 因为 `msg_id` 是客户端生成的业务唯一标识，它适合做幂等去重，但不适合作为范围游标。
 
-当前实现使用数据库主键 `id` 作为已读/已投递游标更合适，原因是：
+当前实现使用会话内 `seq` 作为已读/送达游标，原因是：
 
-- 主键天然递增
+- `seq` 在会话内严格递增
 - 易于做区间查询
-- 可以直接表达“读到第几条”
+- 可以和 history、sync、离线补推共用同一套语义
 
 ### 9.6 当前收益
 
 - 已读推进和离线补推共享同一套序号体系。
-- 会话未读数、离线区间查询、最近消息索引可以共用这套基础模型。
+- 会话未读数、离线区间查询、实时回执可以共用这套基础模型。
 
 ---
 
@@ -494,7 +486,7 @@
 
 如果你要用一句话概括当前系统的核心主链路，可以这样说：
 
-> 用户先通过 HTTP 登录拿到 JWT，再通过 WebSocket 建立实时连接；好友关系通过“申请 -> 同意”形成，并同步创建单聊会话；发消息时先同步入库并推进接收方投递游标，再把已持久化的消息做实时转发；用户下次上线时，系统会根据 `LastDeliveredMsgSeq` 和 `LastReadMsgSeq` 之间的消息区间进行离线补推；已读推进则通过消息主键单调更新会话成员游标。
+> 用户先通过 HTTP 登录拿到 JWT，再通过 WebSocket 建立实时连接；好友关系通过“申请 -> 同意”形成，并同步创建单聊会话；发消息时先同步入库，提交成功后向发送方返回 `message.sent`、向接收方转发 `message.created`；接收方用 `message.delivered` 推进送达游标，用 `message.read` 或 HTTP read 推进已读游标；用户重连时系统根据 `seq` 从 MySQL 真源补推尚未确认收到的消息。
 
 这句话基本就把你现在这个项目最有含金量的部分讲全了。
 
@@ -504,7 +496,7 @@
 
 当前链路已经是完整可用的，但还有几个明确的增强方向：
 
-- 增加发送成功 / 投递成功 / 已读回执三类前端可感知事件
+- 完善多端同步下的发送成功 / 投递成功 / 已读回执展示
 - 给消息增加明确的消息类型字段，而不只是一种文本消息
 - 为群聊补独立会话链路
 - 给离线补推增加批量分页与断点续传语义

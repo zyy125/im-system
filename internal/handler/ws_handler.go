@@ -13,21 +13,21 @@ import (
 
 type WSHandler struct {
 	hub                 *ws.Hub
+	messageSendService  service.MessageSendService
 	messageService      service.MessageService
-	friendService       service.FriendService
 	conversationService service.ConversationService
 }
 
 func NewWSHandler(
 	hub *ws.Hub,
+	messageSendService service.MessageSendService,
 	messageService service.MessageService,
-	friendService service.FriendService,
 	conversationService service.ConversationService,
 ) *WSHandler {
 	return &WSHandler{
 		hub:                 hub,
+		messageSendService:  messageSendService,
 		messageService:      messageService,
-		friendService:       friendService,
 		conversationService: conversationService,
 	}
 }
@@ -66,7 +66,8 @@ func (h *WSHandler) HandleWS(c *gin.Context) {
 		Conn:        conn,
 		Send:        make(chan []byte, 256),
 		Hub:         h.hub,
-		ChatHandler: ws.NewChatSendHandler(h.messageService, h.friendService, h.conversationService),
+		ChatHandler: ws.NewChatSendHandler(h.messageSendService),
+		AckHandler:  ws.NewMessageAckHandler(h.messageService, h.conversationService),
 	}
 
 	go client.WritePump(ctx)

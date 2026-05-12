@@ -11,86 +11,126 @@ import (
 
 type MessageHandler struct {
 	messageService      service.MessageService
-	friendService       service.FriendService
 	conversationService service.ConversationService
 }
 
 func NewMessageHandler(
 	messageService service.MessageService,
-	friendService service.FriendService,
 	conversationService service.ConversationService,
 ) *MessageHandler {
 	return &MessageHandler{
 		messageService:      messageService,
-		friendService:       friendService,
 		conversationService: conversationService,
 	}
 }
 
 // History 获取消息历史
 // @Summary 获取消息历史
-// @Description 查询当前用户与指定好友之间的历史消息，支持按消息ID向更早消息分页
+// @Description 按会话 ID 和 before_seq 查询历史消息，返回顺序为 seq 从小到大
 // @Tags 消息
 // @Produce json
 // @Security BearerAuth
-// @Param peer_id query int true "好友用户ID"
+// @Param conversation_id query int true "会话ID"
 // @Param limit query int false "返回条数上限，默认20，最大100"
-// @Param before_id query int false "查询该消息ID之前的更早消息"
+// @Param before_seq query int false "查询该seq之前的更早消息"
 // @Success 200 {object} response.Response{data=dto.MessageHistoryResp} "查询成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"
-// @Failure 403 {object} response.Response "非好友不可查询"
+// @Failure 403 {object} response.Response "无权访问该会话"
 // @Failure 500 {object} response.Response "内部服务器错误"
 // @Router /api/v1/messages/history [get]
 func (h *MessageHandler) History(c *gin.Context) {
 	userID := currentUserID(c)
-	peerID, ok := parseUintQueryError(c, "peer_id", apperr.MessageInvalidPeerID())
+	conversationID, ok := parseUintQueryError(c, "conversation_id", apperr.InvalidID("conversation_id"))
 	if !ok {
 		return
 	}
 
 	limit := queryInt(c, "limit", 20)
-	var beforeID uint64
-	if raw := c.Query("before_id"); raw != "" {
+	var beforeSeq uint64
+	if raw := c.Query("before_seq"); raw != "" {
 		parsed, err := strconv.ParseUint(raw, 10, 64)
 		if err != nil || parsed == 0 {
-			respondError(c, apperr.InvalidArgument("invalid before_id"))
+			respondError(c, apperr.InvalidArgument("invalid before_seq"))
 			return
 		}
-		beforeID = parsed
+		beforeSeq = parsed
 	}
 
-	ok, err := h.friendService.AreFriends(requestContext(c), userID, peerID)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-	if !ok {
-		respondError(c, apperr.FriendNotFriends())
-		return
-	}
-
-	msgs, hasMore, err := h.messageService.ListHistory(requestContext(c), userID, peerID, limit, beforeID)
+	msgs, hasMore, err := h.messageService.ListConversationHistory(requestContext(c), userID, conversationID, limit, beforeSeq)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
 
-	var nextBeforeID uint64
+	var nextBeforeSeq uint64
 	if hasMore && len(msgs) > 0 {
-		nextBeforeID = msgs[0].ID
+		nextBeforeSeq = msgs[0].Seq
 	}
 
 	respondOK(c, dto.MessageHistoryResp{
-		Messages:     msgs,
-		HasMore:      hasMore,
-		NextBeforeID: nextBeforeID,
+		Messages:      msgs,
+		HasMore:       hasMore,
+		NextBeforeSeq: nextBeforeSeq,
+	})
+}
+
+// Sync 同步消息
+// @Summary 同步消息
+// @Description 按会话 ID 和 after_seq 补拉后续消息，返回顺序为 seq 从小到大
+// @Tags 消息
+// @Produce json
+// @Security BearerAuth
+// @Param conversation_id query int true "会话ID"
+// @Param after_seq query int false "起始seq，不返回该seq本身"
+// @Param limit query int false "返回条数上限，默认100，最大200"
+// @Success 200 {object} response.Response{data=dto.MessageSyncResp} "同步成功"
+// @Failure 400 {object} response.Response "参数错误"
+// @Failure 401 {object} response.Response "未认证"
+// @Failure 403 {object} response.Response "无权访问该会话"
+// @Failure 500 {object} response.Response "内部服务器错误"
+// @Router /api/v1/messages/sync [get]
+func (h *MessageHandler) Sync(c *gin.Context) {
+	userID := currentUserID(c)
+	conversationID, ok := parseUintQueryError(c, "conversation_id", apperr.InvalidID("conversation_id"))
+	if !ok {
+		return
+	}
+
+	limit := queryInt(c, "limit", 100)
+	var afterSeq uint64
+	if raw := c.Query("after_seq"); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			respondError(c, apperr.InvalidArgument("invalid after_seq"))
+			return
+		}
+		afterSeq = parsed
+	}
+
+	msgs, hasMore, err := h.messageService.SyncConversation(requestContext(c), userID, conversationID, afterSeq, limit)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+
+	var maxReturnedSeq uint64
+	for _, msg := range msgs {
+		if msg.Seq > maxReturnedSeq {
+			maxReturnedSeq = msg.Seq
+		}
+	}
+
+	respondOK(c, dto.MessageSyncResp{
+		Messages:       msgs,
+		HasMore:        hasMore,
+		MaxReturnedSeq: maxReturnedSeq,
 	})
 }
 
 // MarkRead 标记消息已读
 // @Summary 标记消息已读
-// @Description 根据会话ID和消息ID推进当前用户的已读游标
+// @Description 根据会话 ID 和 read_seq 推进当前用户的已读游标
 // @Tags 消息
 // @Accept json
 // @Produce json
@@ -99,7 +139,8 @@ func (h *MessageHandler) History(c *gin.Context) {
 // @Success 200 {object} response.Response "标记成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"
-// @Failure 404 {object} response.Response "消息不存在"
+// @Failure 403 {object} response.Response "无权访问该会话或消息不可读"
+// @Failure 409 {object} response.Response "read_seq 尚未送达"
 // @Failure 500 {object} response.Response "内部服务器错误"
 // @Router /api/v1/messages/read [post]
 func (h *MessageHandler) MarkRead(c *gin.Context) {
@@ -109,12 +150,12 @@ func (h *MessageHandler) MarkRead(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	if req.ConversationID == "" || req.MsgID == "" {
-		respondError(c, apperr.Required("conversation_id", "msg_id"))
+	if req.ConversationID == 0 || req.ReadSeq == 0 {
+		respondError(c, apperr.Required("conversation_id", "read_seq"))
 		return
 	}
 
-	if err := h.conversationService.MarkRead(requestContext(c), userID, req.ConversationID, req.MsgID); err != nil {
+	if _, err := h.conversationService.MarkRead(requestContext(c), userID, req.ConversationID, req.ReadSeq); err != nil {
 		respondError(c, err)
 		return
 	}

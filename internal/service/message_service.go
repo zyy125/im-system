@@ -2,91 +2,147 @@ package service
 
 import (
 	"context"
-	"strconv"
-	"time"
+	"errors"
 
 	"github.com/zyy125/im-system/internal/apperr"
 	"github.com/zyy125/im-system/internal/model"
 	"github.com/zyy125/im-system/internal/repository"
+	"gorm.io/gorm"
 )
 
 type messageService struct {
 	messageRepo      repository.MessageRepo
 	conversationRepo repository.ConversationRepo
-	txManager        repository.MessageTxManager
 }
 
 type MessageService interface {
-	SaveMessage(ctx context.Context, msg *model.ChatMessage) (model.ChatMessage, error)
-	ListHistory(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error)
+	// ListConversationHistory 按 seq 分页查询会话历史消息，并校验当前用户访问权限。
+	ListConversationHistory(ctx context.Context, userID, conversationID uint64, limit int, beforeSeq uint64) ([]model.Message, bool, error)
+	// SyncConversation 按 seq 补拉某个会话 after_seq 之后的消息。
+	SyncConversation(ctx context.Context, userID, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
+	// MarkDelivered 推进某个成员的最大连续接收游标，并返回需要接收回执的活跃成员。
+	MarkDelivered(ctx context.Context, userID, conversationID, deliveredSeq uint64) ([]uint64, error)
 }
 
 var _ MessageService = (*messageService)(nil)
 
-func NewMessageService(messageRepo repository.MessageRepo, conversationRepo repository.ConversationRepo, txManager repository.MessageTxManager) MessageService {
-	return &messageService{messageRepo: messageRepo, conversationRepo: conversationRepo, txManager: txManager}
+// NewMessageService 创建一个不依赖运行时热状态仓库的消息服务。
+// 适用于单元测试或只关心持久化行为的调用方。
+func NewMessageService(
+	messageRepo repository.MessageRepo,
+	conversationRepo repository.ConversationRepo,
+) MessageService {
+	return &messageService{
+		messageRepo:      messageRepo,
+		conversationRepo: conversationRepo,
+	}
 }
 
-func (s *messageService) SaveMessage(ctx context.Context, msg *model.ChatMessage) (model.ChatMessage, error) {
-	if msg == nil {
-		return model.ChatMessage{}, apperr.RequiredOne("message")
-	}
-	if msg.MsgID == "" {
-		return model.ChatMessage{}, apperr.MessageIDRequired()
-	}
-	if msg.ConversationID == "" {
-		return model.ChatMessage{}, apperr.MessageConversationRequired()
-	}
-	if msg.From == 0 || msg.To == 0 {
-		return model.ChatMessage{}, apperr.Required("from", "to")
-	}
-	if msg.Content == "" {
-		return model.ChatMessage{}, apperr.RequiredOne("content")
+func (s *messageService) ListConversationHistory(ctx context.Context, userID, conversationID uint64, limit int, beforeSeq uint64) ([]model.Message, bool, error) {
+	if userID == 0 || conversationID == 0 {
+		return nil, false, apperr.Required("user_id", "conversation_id")
 	}
 
-	conversationID, err := strconv.ParseUint(msg.ConversationID, 10, 64)
+	_, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
 	if err != nil {
-		return model.ChatMessage{}, apperr.InvalidID("conversation_id")
-	}
-	if msg.SendTime == 0 {
-		msg.SendTime = time.Now().UnixMilli()
+		return nil, false, err
 	}
 
-	persist := func(messageRepo repository.MessageRepo, conversationRepo repository.ConversationRepo) error {
-		if err := messageRepo.Create(ctx, msg); err != nil {
-			return err
-		}
-
-		if err := conversationRepo.EnsureMember(ctx, conversationID, msg.From); err != nil {
-			return err
-		}
-		if err := conversationRepo.EnsureMember(ctx, conversationID, msg.To); err != nil {
-			return err
-		}
-
-		if err := conversationRepo.UpdateLastDeliveredMsgSeq(ctx, conversationID, msg.To, msg.ID); err != nil {
-			return err
-		}
-		if err := conversationRepo.SetVisible(ctx, conversationID, msg.From, true); err != nil {
-			return err
-		}
-		return conversationRepo.SetVisible(ctx, conversationID, msg.To, true)
-	}
-
-	if s.txManager != nil {
-		if err := s.txManager.WithinMessageTx(ctx, persist); err != nil {
-			return model.ChatMessage{}, err
-		}
-	} else if err := persist(s.messageRepo, s.conversationRepo); err != nil {
-		return model.ChatMessage{}, err
-	}
-
-	return *msg, nil
+	return s.messageRepo.ListConversationHistory(ctx, conversationID, limit, beforeSeq, member.JoinedMsgSeq)
 }
 
-func (s *messageService) ListHistory(ctx context.Context, userID, peerID uint64, limit int, beforeID uint64) ([]model.ChatMessage, bool, error) {
-	if userID == 0 || peerID == 0 {
-		return nil, false, apperr.Required("user_id", "peer_id")
+func (s *messageService) SyncConversation(ctx context.Context, userID, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error) {
+	if userID == 0 || conversationID == 0 {
+		return nil, false, apperr.Required("user_id", "conversation_id")
 	}
-	return s.messageRepo.ListBetween(ctx, userID, peerID, limit, beforeID)
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	_, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if afterSeq < member.JoinedMsgSeq {
+		afterSeq = member.JoinedMsgSeq
+	}
+
+	return s.messageRepo.ListConversationAfterSeq(ctx, conversationID, afterSeq, limit)
+}
+
+func (s *messageService) MarkDelivered(ctx context.Context, userID, conversationID, deliveredSeq uint64) ([]uint64, error) {
+	if userID == 0 || conversationID == 0 || deliveredSeq == 0 {
+		return nil, apperr.Required("user_id", "conversation_id", "delivered_seq")
+	}
+
+	_, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if deliveredSeq <= member.JoinedMsgSeq || deliveredSeq <= member.LastAckedMsgSeq {
+		recipients, err := s.listActiveMemberIDs(ctx, conversationID)
+		if err != nil {
+			return nil, err
+		}
+		return recipients, nil
+	}
+
+	upperBound, err := s.getAckUpperBound(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if deliveredSeq > upperBound {
+		return nil, apperr.MessageNotDelivered()
+	}
+
+	if err := s.conversationRepo.UpdateLastAckedMsgSeq(ctx, conversationID, userID, deliveredSeq); err != nil {
+		return nil, err
+	}
+
+	return s.listActiveMemberIDs(ctx, conversationID)
+}
+
+func (s *messageService) getAckUpperBound(ctx context.Context, conversationID uint64) (uint64, error) {
+	return s.messageRepo.GetMaxSeqByConversation(ctx, conversationID)
+}
+
+func (s *messageService) requireActiveConversationMember(ctx context.Context, conversationID, userID uint64) (model.Conversation, model.ConversationMember, error) {
+	conv, err := s.conversationRepo.GetByID(ctx, conversationID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Conversation{}, model.ConversationMember{}, apperr.NotFound(apperr.CodeConversationNotFound, "conversation not found")
+		}
+		return model.Conversation{}, model.ConversationMember{}, err
+	}
+	if !conv.IsActive() {
+		return model.Conversation{}, model.ConversationMember{}, apperr.ConversationDismissed()
+	}
+
+	member, err := s.conversationRepo.GetMember(ctx, conversationID, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Conversation{}, model.ConversationMember{}, apperr.ConversationMemberNotFound()
+		}
+		return model.Conversation{}, model.ConversationMember{}, err
+	}
+	if !member.IsActive() {
+		return model.Conversation{}, model.ConversationMember{}, apperr.ConversationNotAccessible()
+	}
+	return conv, member, nil
+}
+
+func (s *messageService) listActiveMemberIDs(ctx context.Context, conversationID uint64) ([]uint64, error) {
+	members, err := s.conversationRepo.ListActiveMembers(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uint64, 0, len(members))
+	for _, member := range members {
+		ids = append(ids, member.UserID)
+	}
+	return ids, nil
 }

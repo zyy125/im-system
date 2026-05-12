@@ -178,7 +178,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回当前用户可见的会话列表、未读数和最近一条消息",
+                "description": "获取当前用户可见会话、未读数和最后一条消息摘要",
                 "produces": [
                     "application/json"
                 ],
@@ -220,25 +220,720 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/conversations/direct/{id}/open": {
-            "post": {
+        "/api/v1/conversations/groups": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "与指定好友打开或恢复单聊会话",
+                "description": "返回当前用户仍为活跃成员的全部群聊，不受消息栏 visible 状态影响",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "会话"
                 ],
-                "summary": "打开单聊会话",
+                "summary": "获取群聊列表",
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.ConversationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建一个群聊并可携带初始成员",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "创建群聊",
+                "parameters": [
+                    {
+                        "description": "创建群聊请求",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateGroupReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "创建成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.GroupConversationResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "群人数超限或状态冲突",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取指定群聊的基础信息和当前用户角色",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "获取群详情",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "好友用户ID",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.GroupDetailEnvelopeResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权访问该群",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}/dismiss": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "由群主解散指定群聊",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "解散群聊",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限解散",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}/invite": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "邀请用户加入指定群聊",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "邀请成员入群",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "邀请成员请求",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.InviteGroupMembersReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限邀请",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "群人数超限或状态冲突",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}/leave": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "当前用户主动退出指定群聊",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "退出群聊",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限退出",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "群主不可直接退群",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取指定群聊的当前活跃成员列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "获取群成员列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "查询成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.GroupMemberListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权访问该群",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}/members/{user_id}/remove": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将指定成员从群聊中移除",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "移除群成员",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "成员用户ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限移除",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话或成员不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/groups/{id}/name": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "修改群聊名称并写入系统消息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "修改群名称",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "群会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "修改群名请求",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateGroupNameReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权限修改",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "群会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{id}/hide": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将指定会话从当前用户会话列表中隐藏",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "隐藏会话",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "会话成员不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{id}/open": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按会话ID打开会话，不可见会话会自动恢复显示",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "打开会话",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -276,65 +971,13 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "非好友不可打开",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "内部服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/conversations/{id}/hide": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "将指定会话从当前用户的会话列表中隐藏",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "会话"
-                ],
-                "summary": "隐藏会话",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "会话ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "隐藏成功",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "401": {
-                        "description": "未认证",
+                        "description": "无权访问该会话",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
                     },
                     "404": {
-                        "description": "会话成员不存在",
+                        "description": "会话或成员不存在",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
@@ -668,7 +1311,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回当前用户的好友列表及在线状态",
+                "description": "返回当前用户的好友列表、在线状态及对应单聊会话ID",
                 "produces": [
                     "application/json"
                 ],
@@ -769,7 +1412,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "查询当前用户与指定好友之间的历史消息，支持按消息ID向更早消息分页",
+                "description": "按会话 ID 和 before_seq 查询历史消息，返回顺序为 seq 从小到大",
                 "produces": [
                     "application/json"
                 ],
@@ -780,8 +1423,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "好友用户ID",
-                        "name": "peer_id",
+                        "description": "会话ID",
+                        "name": "conversation_id",
                         "in": "query",
                         "required": true
                     },
@@ -793,8 +1436,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "查询该消息ID之前的更早消息",
-                        "name": "before_id",
+                        "description": "查询该seq之前的更早消息",
+                        "name": "before_seq",
                         "in": "query"
                     }
                 ],
@@ -830,7 +1473,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "非好友不可查询",
+                        "description": "无权访问该会话",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
@@ -851,7 +1494,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据会话ID和消息ID推进当前用户的已读游标",
+                "description": "根据会话 ID 和 read_seq 推进当前用户的已读游标",
                 "consumes": [
                     "application/json"
                 ],
@@ -892,8 +1535,96 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.Response"
                         }
                     },
-                    "404": {
-                        "description": "消息不存在",
+                    "403": {
+                        "description": "无权访问该会话或消息不可读",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "read_seq 尚未送达",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/messages/sync": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按会话 ID 和 after_seq 补拉后续消息，返回顺序为 seq 从小到大",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "消息"
+                ],
+                "summary": "同步消息",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话ID",
+                        "name": "conversation_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "起始seq，不返回该seq本身",
+                        "name": "after_seq",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "返回条数上限，默认100，最大200",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "同步成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.MessageSyncResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "无权访问该会话",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
@@ -1138,7 +1869,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "last_message": {
-                    "$ref": "#/definitions/model.ChatMessage"
+                    "$ref": "#/definitions/model.Message"
                 },
                 "name": {
                     "type": "string"
@@ -1179,9 +1910,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateGroupReq": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "member_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.FriendInfoResp": {
             "type": "object",
             "properties": {
+                "conversation_id": {
+                    "type": "integer"
+                },
                 "online": {
                     "type": "boolean"
                 },
@@ -1249,18 +2000,102 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.GroupConversationResp": {
+            "type": "object",
+            "properties": {
+                "conversation": {
+                    "$ref": "#/definitions/dto.ConversationItemResp"
+                }
+            }
+        },
+        "dto.GroupDetailEnvelopeResp": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "$ref": "#/definitions/dto.GroupDetailResp"
+                }
+            }
+        },
+        "dto.GroupDetailResp": {
+            "type": "object",
+            "properties": {
+                "avatar": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "member_count": {
+                    "type": "integer"
+                },
+                "my_role": {
+                    "$ref": "#/definitions/model.ConversationMemberRole"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/model.ConversationStatus"
+                }
+            }
+        },
+        "dto.GroupMemberListResp": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.GroupMemberResp"
+                    }
+                }
+            }
+        },
+        "dto.GroupMemberResp": {
+            "type": "object",
+            "properties": {
+                "online": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "$ref": "#/definitions/model.ConversationMemberRole"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InviteGroupMembersReq": {
+            "type": "object",
+            "required": [
+                "member_ids"
+            ],
+            "properties": {
+                "member_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "dto.MarkReadReq": {
             "type": "object",
             "required": [
                 "conversation_id",
-                "msg_id"
+                "read_seq"
             ],
             "properties": {
                 "conversation_id": {
-                    "type": "string"
+                    "type": "integer"
                 },
-                "msg_id": {
-                    "type": "string"
+                "read_seq": {
+                    "type": "integer"
                 }
             }
         },
@@ -1273,11 +2108,28 @@ const docTemplate = `{
                 "messages": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.ChatMessage"
+                        "$ref": "#/definitions/model.Message"
                     }
                 },
-                "next_before_id": {
+                "next_before_seq": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.MessageSyncResp": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "max_returned_seq": {
+                    "type": "integer"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Message"
+                    }
                 }
             }
         },
@@ -1293,6 +2145,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UpdateGroupNameReq": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
                     "type": "string"
                 }
             }
@@ -1349,31 +2212,49 @@ const docTemplate = `{
                 }
             }
         },
-        "model.ChatMessage": {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "conversation_id": {
-                    "type": "string"
-                },
-                "from": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "msg_id": {
-                    "type": "string"
-                },
-                "send_time": {
-                    "type": "integer"
-                },
-                "to": {
-                    "type": "integer"
-                }
-            }
+        "model.ConversationMemberRole": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                1,
+                2,
+                3
+            ],
+            "x-enum-comments": {
+                "ConversationMemberRoleAdmin": "管理员",
+                "ConversationMemberRoleMember": "普通成员",
+                "ConversationMemberRoleOwner": "群主"
+            },
+            "x-enum-descriptions": [
+                "群主",
+                "管理员",
+                "普通成员"
+            ],
+            "x-enum-varnames": [
+                "ConversationMemberRoleOwner",
+                "ConversationMemberRoleAdmin",
+                "ConversationMemberRoleMember"
+            ]
+        },
+        "model.ConversationStatus": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                1,
+                2
+            ],
+            "x-enum-comments": {
+                "ConversationStatusActive": "正常",
+                "ConversationStatusDismissed": "已解散（群聊专用）"
+            },
+            "x-enum-descriptions": [
+                "正常",
+                "已解散（群聊专用）"
+            ],
+            "x-enum-varnames": [
+                "ConversationStatusActive",
+                "ConversationStatusDismissed"
+            ]
         },
         "model.ConversationType": {
             "type": "integer",
@@ -1381,6 +2262,14 @@ const docTemplate = `{
             "enum": [
                 1,
                 2
+            ],
+            "x-enum-comments": {
+                "ConversationTypeGroup": "群聊",
+                "ConversationTypeSingle": "单聊"
+            },
+            "x-enum-descriptions": [
+                "单聊",
+                "群聊"
             ],
             "x-enum-varnames": [
                 "ConversationTypeSingle",
@@ -1395,10 +2284,105 @@ const docTemplate = `{
                 2,
                 3
             ],
+            "x-enum-comments": {
+                "FriendRequestAccepted": "已同意",
+                "FriendRequestPending": "待处理",
+                "FriendRequestRejected": "已拒绝"
+            },
+            "x-enum-descriptions": [
+                "待处理",
+                "已同意",
+                "已拒绝"
+            ],
             "x-enum-varnames": [
                 "FriendRequestPending",
                 "FriendRequestAccepted",
                 "FriendRequestRejected"
+            ]
+        },
+        "model.Message": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "integer"
+                },
+                "event": {
+                    "description": "系统消息事件类型，普通文本消息为空",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.MessageEvent"
+                        }
+                    ]
+                },
+                "extra": {
+                    "description": "系统消息携带的结构化附加数据",
+                    "type": "object"
+                },
+                "from": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "msg_id": {
+                    "description": "客户端生成的幂等 ID，用于去重",
+                    "type": "string"
+                },
+                "send_time": {
+                    "description": "Unix 毫秒时间戳",
+                    "type": "integer"
+                },
+                "seq": {
+                    "description": "会话内单调递增序列号，由 SeqAllocator 分配",
+                    "type": "integer"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.MessageType"
+                }
+            }
+        },
+        "model.MessageEvent": {
+            "type": "string",
+            "enum": [
+                "",
+                "group_created",
+                "group_renamed",
+                "group_members_joined",
+                "group_member_removed",
+                "group_member_left",
+                "group_dismissed"
+            ],
+            "x-enum-varnames": [
+                "MessageEventNone",
+                "MessageEventGroupCreated",
+                "MessageEventGroupRenamed",
+                "MessageEventGroupMembersJoined",
+                "MessageEventGroupMemberRemoved",
+                "MessageEventGroupMemberLeft",
+                "MessageEventGroupDismissed"
+            ]
+        },
+        "model.MessageType": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                1,
+                2
+            ],
+            "x-enum-comments": {
+                "MessageTypeSystem": "系统自动生成的事件消息（如建群、改名）",
+                "MessageTypeText": "用户发送的文本消息"
+            },
+            "x-enum-descriptions": [
+                "用户发送的文本消息",
+                "系统自动生成的事件消息（如建群、改名）"
+            ],
+            "x-enum-varnames": [
+                "MessageTypeText",
+                "MessageTypeSystem"
             ]
         },
         "response.Response": {

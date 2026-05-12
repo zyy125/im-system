@@ -2,173 +2,157 @@
 
 本文档描述 `/api/v1/ws/` WebSocket 连接的消息格式、事件类型和字段约束。
 
-当前协议统一使用 envelope 结构：
+所有消息统一使用 envelope：
 
 ```json
 {
-  "type": "chat.message",
+  "type": "message.created",
   "version": 1,
   "data": {}
 }
 ```
 
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `type` | string | 消息类型 |
-| `version` | int | 协议版本，当前固定为 `1` |
-| `data` | object | 对应类型的业务负载 |
-
-## 1. 连接方式
+## 1. 连接
 
 - 路径：`GET /api/v1/ws/`
-- 认证方式：
-  - `Authorization: Bearer <token>`
-  - 或查询参数：`?token=<jwt>`
-- 连接成功后，服务端会维护该用户的在线状态，并在初始化完成后推送：
-  - 离线消息
-  - 好友在线状态变化事件
+- 认证方式：`Authorization: Bearer <token>` 或 `?token=<jwt>`
+- 连接完成后，服务端先补推离线消息，再进入实时转发状态。
 
-## 2. 客户端发送消息
+## 2. 客户端事件
 
-客户端发送的是一个 envelope，当前支持“单聊消息发送”。
-
-### 2.1 请求格式
+### message.send
 
 ```json
 {
-  "type": "chat.send",
+  "type": "message.send",
   "version": 1,
   "data": {
     "msg_id": "msg_1742970000000_abcd1234",
-    "to": 10,
-    "content": "hello",
-    "send_time": 1742970000000
-  }
-}
-```
-
-### 2.2 字段说明
-
-`data` 字段说明：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `msg_id` | string | 是 | 客户端生成的消息唯一标识。全局要求唯一，用于幂等去重。 |
-| `to` | uint64 | 是 | 接收方用户 ID。必须为当前用户的好友。 |
-| `content` | string | 是 | 消息内容。当前为普通文本消息。 |
-| `send_time` | int64 | 否 | 客户端发送时间戳，毫秒。若不传，服务端会补充当前时间。 |
-
-### 2.3 服务端处理规则
-
-- 服务端会强制覆盖/补充以下字段：
-  - `from`：取当前已认证用户 ID
-  - `conversation_id`：由服务端根据双方用户 ID 获取或创建单聊会话
-  - `send_time`：若客户端未传，则由服务端补齐
-- 当前不信任客户端传入的 `from`、`conversation_id`
-- 若好友关系校验失败，服务端不会转发，也不会入库
-
-## 3. 服务端推送消息
-
-服务端当前会推送三类内容：
-
-1. 聊天消息
-2. 错误事件
-3. 在线状态事件
-
-### 3.1 聊天消息
-
-聊天消息使用 `chat.message` envelope。
-
-```json
-{
-  "type": "chat.message",
-  "version": 1,
-  "data": {
-    "id": 123,
-    "msg_id": "msg_1742970000000_abcd1234",
-    "conversation_id": "1",
-    "from": 9,
-    "to": 10,
-    "send_time": 1742970000000,
+    "conversation_id": 1,
     "content": "hello"
   }
 }
 ```
 
-`data` 字段说明：
+- `msg_id` 是客户端生成的全局幂等键。
+- `conversation_id` 是目标会话 ID。
+- `content` 是文本内容。
+- 服务端只信任当前连接身份，`from`、`send_time`、`seq` 均由服务端生成。
+- 数据库事务提交成功后，发送方收到 `message.sent`，其他在线成员收到 `message.created`。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `id` | uint64 | 数据库主键，自增消息序号，也是会话内游标推进依据。 |
-| `msg_id` | string | 客户端生成的业务消息 ID。 |
-| `conversation_id` | string | 会话 ID。当前单聊会话由服务端创建并返回。 |
-| `from` | uint64 | 发送方用户 ID。 |
-| `to` | uint64 | 接收方用户 ID。 |
-| `send_time` | int64 | 发送时间戳，毫秒。 |
-| `content` | string | 消息内容。 |
-
-### 3.2 错误事件
-
-当客户端发送非法消息、非好友发消息等情况时，服务端会推送错误事件。
+### message.delivered
 
 ```json
 {
-  "type": "error",
+  "type": "message.delivered",
   "version": 1,
   "data": {
-    "code": "message.invalid_payload",
-    "message": "invalid message"
+    "conversation_id": 1,
+    "delivered_seq": 123
   }
 }
 ```
 
-`data` 字段说明：
+- 表示客户端在该会话内已经连续收到 `delivered_seq`。
+- 服务端单调推进 `conversation_members.last_acked_msg_seq`。
+- `delivered_seq` 不能超过当前会话 MySQL 已提交的最大 `seq`。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `code` | string | 业务错误码 |
-| `message` | string | 面向前端展示的错误信息 |
-
-### 3.3 在线状态事件
-
-当好友上线/下线时，服务端会向在线好友推送 presence 事件。
+### message.read
 
 ```json
 {
-  "type": "presence.changed",
+  "type": "message.read",
   "version": 1,
   "data": {
+    "conversation_id": 1,
+    "read_seq": 123
+  }
+}
+```
+
+- 表示用户已经读到该会话内的 `read_seq`。
+- `read_seq` 必须大于入会时的 `joined_msg_seq`，且不能超过该用户的 `last_acked_msg_seq`。
+- 服务端单调推进 `conversation_members.last_read_msg_seq`。
+
+## 3. 服务端事件
+
+### message.sent
+
+发送方专属回执，表示消息已经完成 DB commit。
+
+### message.created
+
+接收方消息事件，实时推送和离线补推都使用同一 payload：
+
+```json
+{
+  "type": "message.created",
+  "version": 1,
+  "data": {
+    "id": 123,
+    "msg_id": "msg_1742970000000_abcd1234",
+    "conversation_id": 1,
+    "seq": 456,
+    "type": 1,
+    "event": "",
+    "from": 9,
+    "send_time": 1742970000000,
+    "content": "hello",
+    "extra": null
+  }
+}
+```
+
+`seq` 是唯一业务游标，history、sync、离线补推、delivered、read 都基于它。
+
+### message.delivered
+
+```json
+{
+  "type": "message.delivered",
+  "version": 1,
+  "data": {
+    "conversation_id": 1,
     "user_id": 10,
-    "online": true
+    "delivered_seq": 123
   }
 }
 ```
 
-`data` 字段说明：
+服务端在接收确认成功后向会话在线成员广播该回执。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `user_id` | uint64 | 状态发生变化的用户 ID |
-| `online` | bool | `true` 表示上线，`false` 表示下线 |
+### message.read
 
-## 4. 离线消息补推
+```json
+{
+  "type": "message.read",
+  "version": 1,
+  "data": {
+    "conversation_id": 1,
+    "user_id": 10,
+    "read_seq": 123
+  }
+}
+```
 
-用户连接建立后，Hub 初始化流程会先补推离线消息，再开始实时转发。
+服务端在已读推进成功后向会话在线成员广播该回执。
 
-当前离线补推范围：
+### error / presence.changed
 
-- 按会话维度查询当前用户 `LastReadMsgSeq < 消息主键 ID <= LastDeliveredMsgSeq` 的消息
-- 多个会话的离线消息会按：
-  - `send_time` 升序
-  - 若时间相同则 `id` 升序
-  进行合并排序后推送
+- `error` 携带 `{code, message}`。
+- `presence.changed` 携带 `{user_id, online}`，只表示好友在线状态变化。
+
+## 4. 离线补推
+
+- 离线补推只读 MySQL 已提交消息。
+- 每个会话以 `max(joined_msg_seq, last_acked_msg_seq)` 为起点，读取该会话当前最大 `seq` 之前的消息。
+- 不按发送人过滤；是否需要展示或去重由客户端按 `msg_id` 和本地状态处理。
+- 多会话结果按 `send_time ASC`，同时间按 `conversation_id ASC, seq ASC` 合并。
 
 ## 5. 前端建议
 
-- 先按 envelope 的 `type` 分发，再解析 `data`
-- 聊天消息使用 `data.msg_id` 做业务去重
-- 错误事件根据 `data.code` 分支处理，不要依赖中文 `data.message`
-- `presence.changed` 事件只更新好友在线状态，不应作为聊天消息渲染
-- 客户端重连后要能正确处理离线补推与实时消息混合到达
+- 本地发送后先标记 `sending`，收到 `message.sent` 后标记 `sent`。
+- 收到 `message.created` 后按会话连续 `seq` 推进，并发送 `message.delivered`。
+- 只有用户实际读到消息时才发送 `message.read`。
+- 缺口补拉使用 `/api/v1/messages/sync?conversation_id=...&after_seq=...`。
+- 不使用 `id`、`send_time`、`msg_id` 作为范围游标。

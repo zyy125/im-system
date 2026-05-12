@@ -1,8 +1,11 @@
 package ws
 
 const (
-	EventTypeChatSend        = "chat.send"
-	EventTypeChatMessage     = "chat.message"
-	EventTypeError           = "error"
-	EventTypePresenceChanged = "presence.changed"
+	EventTypeMessageSend      = "message.send"
+	EventTypeMessageSent      = "message.sent"
+	EventTypeMessageDelivered = "message.delivered"
+	EventTypeMessageRead      = "message.read"
+	EventTypeMessageCreated   = "message.created"
+	EventTypeError            = "error"
+	EventTypePresenceChanged  = "presence.changed"
 )
