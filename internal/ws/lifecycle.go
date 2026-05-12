@@ -2,16 +2,15 @@ package ws
 
 import (
 	"context"
-	"log"
 
+	"github.com/zyy125/im-system/internal/logging"
 	"github.com/zyy125/im-system/internal/model"
 	"github.com/zyy125/im-system/internal/repository"
 )
 
 type ClientLifecycle interface {
-	// Bootstrap 处理用户刚建立连接时的初始化，例如上线和离线补推。
 	Bootstrap(ctx context.Context, userID uint64) ([][]byte, error)
-	// Disconnect 处理用户连接断开后的下线收尾逻辑。
+	Refresh(ctx context.Context, userID uint64)
 	Disconnect(ctx context.Context, userID uint64)
 }
 
@@ -37,9 +36,10 @@ func NewClientLifecycle(
 }
 
 func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byte, error) {
+	logger := logging.FromContext(ctx).With("user_id", userID)
 	if l.presenceRepo != nil {
 		if err := l.presenceRepo.SetOnline(ctx, userID); err != nil {
-			log.Printf("Set online failed for %d: %v", userID, err)
+			logger.Error("set online failed", "error", err)
 		} else {
 			l.broadcastPresence(ctx, userID, true)
 		}
@@ -54,7 +54,7 @@ func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byt
 	for _, msg := range msgs {
 		payload, err := MarshalEnvelope(EventTypeMessageCreated, NewServerMessage(msg))
 		if err != nil {
-			log.Printf("Marshal offline message %s failed: %v", msg.MsgID, err)
+			logger.Error("marshal offline message failed", "msg_id", msg.MsgID, "error", err)
 			continue
 		}
 		payloads = append(payloads, payload)
@@ -62,12 +62,21 @@ func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byt
 	return payloads, nil
 }
 
+func (l *clientLifecycle) Refresh(ctx context.Context, userID uint64) {
+	if l.presenceRepo == nil {
+		return
+	}
+	if err := l.presenceRepo.RefreshOnline(ctx, userID); err != nil {
+		logging.FromContext(ctx).With("user_id", userID).Error("refresh presence failed", "error", err)
+	}
+}
+
 func (l *clientLifecycle) Disconnect(ctx context.Context, userID uint64) {
 	if l.presenceRepo == nil {
 		return
 	}
 	if err := l.presenceRepo.SetOffline(ctx, userID); err != nil {
-		log.Printf("Set offline failed for %d: %v", userID, err)
+		logging.FromContext(ctx).With("user_id", userID).Error("set offline failed", "error", err)
 		return
 	}
 	l.broadcastPresence(ctx, userID, false)
@@ -79,7 +88,7 @@ func (l *clientLifecycle) loadOfflineMessages(ctx context.Context, userID uint64
 	}
 	msgs, err := l.offlineLoader.ListOfflineMessages(ctx, userID)
 	if err != nil {
-		log.Printf("Load offline messages for %d failed: %v", userID, err)
+		logging.FromContext(ctx).With("user_id", userID).Error("load offline messages failed", "error", err)
 		return nil, err
 	}
 	return msgs, nil
@@ -92,7 +101,7 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 
 	friendIDs, err := l.presenceAudience.ListFriendIDs(ctx, userID)
 	if err != nil {
-		log.Printf("List presence audience for %d failed: %v", userID, err)
+		logging.FromContext(ctx).With("user_id", userID).Error("list presence audience failed", "error", err)
 		return
 	}
 	if len(friendIDs) == 0 {
@@ -104,7 +113,7 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 		Online: online,
 	})
 	if err != nil {
-		log.Printf("Marshal presence event for %d failed: %v", userID, err)
+		logging.FromContext(ctx).With("user_id", userID).Error("marshal presence event failed", "error", err)
 		return
 	}
 
@@ -115,7 +124,7 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 			Content: payload,
 		}:
 		default:
-			log.Printf("Presence forward queue is full for user %d", friendID)
+			logging.FromContext(ctx).With("user_id", userID, "target_user_id", friendID).Warn("presence forward queue is full")
 		}
 	}
 }

@@ -4,6 +4,7 @@ jwt:
 
 app:
   env: "development"
+  http_addr: ":8080"
 
 redis:
   addr: "localhost:6379"
@@ -12,3 +13,10 @@ redis:
 
 mysql:
   dsn: "root:123456@tcp(localhost:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
+
+ws:
+  allowed_origins: []
+
+presence:
+  ttl: "90s"
+  heartbeat_interval: "30s"

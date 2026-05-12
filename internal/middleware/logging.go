@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -34,16 +34,16 @@ func ErrorSourceLogger() gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		log.Printf(
-			"error source: status=%d code=%s method=%s path=%s file=%s line=%d func=%s message=%s",
-			c.Writer.Status(),
-			code,
-			c.Request.Method,
-			c.Request.URL.Path,
-			source.File,
-			source.Line,
-			source.Function,
-			message,
+		slog.Error(
+			"http request failed",
+			"status", c.Writer.Status(),
+			"code", code,
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"file", source.File,
+			"line", source.Line,
+			"function", source.Function,
+			"message", message,
 		)
 	}
 }

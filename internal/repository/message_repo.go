@@ -22,12 +22,16 @@ type MessageRepo interface {
 	ListConversationRangeAfterSeq(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error)
 	// GetLatestByConversation 获取某个会话最新的一条消息。
 	GetLatestByConversation(ctx context.Context, conversationID uint64) (model.Message, error)
+	// ListLatestByConversationIDs 批量获取多个会话的最新一条消息。
+	ListLatestByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error)
 	// GetMaxSeqByConversation 查询某个会话当前已持久化的最大 seq。
 	GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error)
 	// ListConversationIDs 返回当前存在消息的会话 ID 列表。
 	ListConversationIDs(ctx context.Context) ([]uint64, error)
 	// CountUnreadByConversation 统计某个成员在会话中的未读消息数。
 	CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error)
+	// CountUnreadByConversationIDs 批量统计某个成员在多个会话中的未读消息数。
+	CountUnreadByConversationIDs(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error)
 }
 
 type messageRepo struct {
@@ -179,6 +183,32 @@ func (r *messageRepo) GetLatestByConversation(ctx context.Context, conversationI
 	return msg, err
 }
 
+func (r *messageRepo) ListLatestByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error) {
+	result := make(map[uint64]model.Message, len(conversationIDs))
+	if len(conversationIDs) == 0 {
+		return result, nil
+	}
+
+	var messages []model.Message
+	subQuery := r.db.WithContext(ctx).
+		Model(&model.Message{}).
+		Select("conversation_id, MAX(seq) AS max_seq").
+		Where("conversation_id IN ?", conversationIDs).
+		Group("conversation_id")
+
+	if err := r.db.WithContext(ctx).
+		Table("messages").
+		Joins("JOIN (?) latest ON latest.conversation_id = messages.conversation_id AND latest.max_seq = messages.seq", subQuery).
+		Find(&messages).Error; err != nil {
+		return nil, err
+	}
+
+	for _, message := range messages {
+		result[message.ConversationID] = message
+	}
+	return result, nil
+}
+
 func (r *messageRepo) GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error) {
 	if conversationID == 0 {
 		return 0, apperr.RequiredOne("conversation_id")
@@ -224,6 +254,47 @@ func (r *messageRepo) CountUnreadByConversation(ctx context.Context, conversatio
 	}
 
 	return count, nil
+}
+
+func (r *messageRepo) CountUnreadByConversationIDs(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error) {
+	result := make(map[uint64]int64, len(conversationIDs))
+	if userID == 0 {
+		return nil, apperr.RequiredOne("user_id")
+	}
+	if len(conversationIDs) == 0 {
+		return result, nil
+	}
+
+	type unreadRow struct {
+		ConversationID uint64 `gorm:"column:conversation_id"`
+		UnreadCount    int64  `gorm:"column:unread_count"`
+	}
+	rows := make([]unreadRow, 0, len(conversationIDs))
+
+	if err := r.db.WithContext(ctx).
+		Table("conversation_members AS cm").
+		Select(`
+			cm.conversation_id AS conversation_id,
+			COUNT(m.id) AS unread_count
+		`).
+		Joins(
+			"LEFT JOIN messages AS m ON m.conversation_id = cm.conversation_id "+
+				"AND m.seq > CASE "+
+				"WHEN cm.last_read_msg_seq > cm.joined_msg_seq THEN cm.last_read_msg_seq "+
+				"ELSE cm.joined_msg_seq END "+
+				"AND m.`from` <> ?",
+			userID,
+		).
+		Where("cm.user_id = ? AND cm.conversation_id IN ?", userID, conversationIDs).
+		Group("cm.conversation_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[row.ConversationID] = row.UnreadCount
+	}
+	return result, nil
 }
 
 func (r *messageRepo) getByMsgID(ctx context.Context, msgID string) (model.Message, error) {

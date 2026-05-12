@@ -39,18 +39,38 @@ func (s *stubUserRepo) ListByIDs(ctx context.Context, ids []uint64) ([]model.Use
 	if s.listByIDsFn != nil {
 		return s.listByIDsFn(ctx, ids)
 	}
-	return []model.User{}, nil
+	items := make([]model.User, 0, len(ids))
+	for _, id := range ids {
+		if s.getByIDFn == nil {
+			continue
+		}
+		user, err := s.getByIDFn(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, user)
+	}
+	return items, nil
 }
 
 type stubPresenceRepo struct {
-	setOnlineFn  func(ctx context.Context, userID uint64) error
-	setOfflineFn func(ctx context.Context, userID uint64) error
-	isOnlineFn   func(ctx context.Context, userID uint64) (bool, error)
+	setOnlineFn      func(ctx context.Context, userID uint64) error
+	refreshOnlineFn  func(ctx context.Context, userID uint64) error
+	setOfflineFn     func(ctx context.Context, userID uint64) error
+	isOnlineFn       func(ctx context.Context, userID uint64) (bool, error)
+	batchGetOnlineFn func(ctx context.Context, userIDs []uint64) (map[uint64]bool, error)
 }
 
 func (s *stubPresenceRepo) SetOnline(ctx context.Context, userID uint64) error {
 	if s.setOnlineFn != nil {
 		return s.setOnlineFn(ctx, userID)
+	}
+	return nil
+}
+
+func (s *stubPresenceRepo) RefreshOnline(ctx context.Context, userID uint64) error {
+	if s.refreshOnlineFn != nil {
+		return s.refreshOnlineFn(ctx, userID)
 	}
 	return nil
 }
@@ -67,6 +87,21 @@ func (s *stubPresenceRepo) IsOnline(ctx context.Context, userID uint64) (bool, e
 		return s.isOnlineFn(ctx, userID)
 	}
 	return false, nil
+}
+
+func (s *stubPresenceRepo) BatchGetOnline(ctx context.Context, userIDs []uint64) (map[uint64]bool, error) {
+	if s.batchGetOnlineFn != nil {
+		return s.batchGetOnlineFn(ctx, userIDs)
+	}
+	result := make(map[uint64]bool, len(userIDs))
+	for _, userID := range userIDs {
+		online, err := s.IsOnline(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		result[userID] = online
+	}
+	return result, nil
 }
 
 type stubFriendRepo struct {
@@ -120,6 +155,7 @@ type stubConversationRepo struct {
 	listConversationsByUserFn func(ctx context.Context, userID uint64) ([]model.Conversation, error)
 	listActiveGroupsByUserFn  func(ctx context.Context, userID uint64) ([]model.Conversation, error)
 	listActiveMembersFn       func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error)
+	listActiveMembersByIDsFn  func(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error)
 	countActiveMembersFn      func(ctx context.Context, conversationID uint64) (int64, error)
 	getMemberFn               func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error)
 	upsertMemberFn            func(ctx context.Context, member *model.ConversationMember) error
@@ -179,6 +215,13 @@ func (s *stubConversationRepo) ListActiveMembers(ctx context.Context, conversati
 		return s.listActiveMembersFn(ctx, conversationID)
 	}
 	return []model.ConversationMember{}, nil
+}
+
+func (s *stubConversationRepo) ListActiveMembersByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error) {
+	if s.listActiveMembersByIDsFn != nil {
+		return s.listActiveMembersByIDsFn(ctx, conversationIDs)
+	}
+	return map[uint64][]model.ConversationMember{}, nil
 }
 
 func (s *stubConversationRepo) CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error) {
@@ -257,9 +300,11 @@ type stubMessageRepo struct {
 	listConversationAfterSeqFn func(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
 	listConversationRangeFn    func(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error)
 	getLatestByConversationFn  func(ctx context.Context, conversationID uint64) (model.Message, error)
+	listLatestByIDsFn          func(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error)
 	getMaxSeqByConversationFn  func(ctx context.Context, conversationID uint64) (uint64, error)
 	listConversationIDsFn      func(ctx context.Context) ([]uint64, error)
 	countUnreadFn              func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error)
+	countUnreadByIDsFn         func(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error)
 }
 
 func (s *stubMessageRepo) Create(ctx context.Context, msg *model.Message) error {
@@ -297,6 +342,24 @@ func (s *stubMessageRepo) GetLatestByConversation(ctx context.Context, conversat
 	return model.Message{}, nil
 }
 
+func (s *stubMessageRepo) ListLatestByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error) {
+	if s.listLatestByIDsFn != nil {
+		return s.listLatestByIDsFn(ctx, conversationIDs)
+	}
+	result := make(map[uint64]model.Message, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if s.getLatestByConversationFn == nil {
+			continue
+		}
+		msg, err := s.getLatestByConversationFn(ctx, conversationID)
+		if err != nil {
+			continue
+		}
+		result[conversationID] = msg
+	}
+	return result, nil
+}
+
 func (s *stubMessageRepo) GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error) {
 	if s.getMaxSeqByConversationFn != nil {
 		return s.getMaxSeqByConversationFn(ctx, conversationID)
@@ -316,6 +379,24 @@ func (s *stubMessageRepo) CountUnreadByConversation(ctx context.Context, convers
 		return s.countUnreadFn(ctx, conversationID, userID, afterSeq)
 	}
 	return 0, nil
+}
+
+func (s *stubMessageRepo) CountUnreadByConversationIDs(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error) {
+	if s.countUnreadByIDsFn != nil {
+		return s.countUnreadByIDsFn(ctx, userID, conversationIDs)
+	}
+	result := make(map[uint64]int64, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if s.countUnreadFn == nil {
+			continue
+		}
+		count, err := s.countUnreadFn(ctx, conversationID, userID, 0)
+		if err != nil {
+			return nil, err
+		}
+		result[conversationID] = count
+	}
+	return result, nil
 }
 
 type stubFriendRequestRepo struct {

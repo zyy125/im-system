@@ -2,8 +2,9 @@ package ws
 
 import (
 	"context"
-	"log"
+	"sync"
 
+	"github.com/zyy125/im-system/internal/logging"
 	"github.com/zyy125/im-system/internal/model"
 	"github.com/zyy125/im-system/internal/repository"
 )
@@ -26,6 +27,7 @@ type PresenceAudienceProvider interface {
 type Hub struct {
 	Clients            map[uint64]*Client
 	ReadyClients       map[uint64]bool
+	NeedsSync          map[uint64]bool
 	PendingMessages    map[uint64][][]byte
 	Register           chan *Client
 	Unregister         chan *Client
@@ -34,6 +36,7 @@ type Hub struct {
 	ClientBootstrapped chan *ClientBootstrapResult
 
 	Lifecycle ClientLifecycle
+	mu        sync.RWMutex
 }
 
 type OfflineMessageLoader interface {
@@ -49,6 +52,7 @@ func NewHub(
 	return &Hub{
 		Clients:            make(map[uint64]*Client),
 		ReadyClients:       make(map[uint64]bool),
+		NeedsSync:          make(map[uint64]bool),
 		PendingMessages:    make(map[uint64][][]byte),
 		Register:           make(chan *Client, 32),
 		Unregister:         make(chan *Client, 32),
@@ -66,28 +70,21 @@ func (h *Hub) Run(ctx context.Context) {
 			h.Clients[client.UserID] = client
 			h.ReadyClients[client.UserID] = false
 			delete(h.PendingMessages, client.UserID)
+			client.Lifecycle = h.Lifecycle
 			go h.bootstrapClient(ctx, client)
-			log.Printf("Client %d registered, total %d clients", client.UserID, len(h.Clients))
+			logging.With("user_id", client.UserID, "connection_id", client.ConnectionID).Info("client registered", "client_count", len(h.Clients))
 
 		case client := <-h.Unregister:
 			current, ok := h.Clients[client.UserID]
-			/*判断 current == client。
-			这是为了避免“旧连接断开，把新连接误删”。
-			比如：
-			用户先有旧连接 A
-			很快又重连出新连接 B
-			旧连接 A 这时才触发 Unregister
-			*/
 			if !ok || current != client {
 				continue
 			}
 			delete(h.Clients, client.UserID)
 			delete(h.ReadyClients, client.UserID)
-			delete(h.PendingMessages, client.UserID)
 			close(client.Send)
 
 			go h.disconnectClient(ctx, client.UserID)
-			log.Printf("Client %d unregistered, total %d clients", client.UserID, len(h.Clients))
+			logging.With("user_id", client.UserID, "connection_id", client.ConnectionID).Info("client unregistered", "client_count", len(h.Clients))
 
 		case msg := <-h.Forward:
 			h.forwardLocal(msg)
@@ -103,19 +100,17 @@ func (h *Hub) Run(ctx context.Context) {
 			h.flushMessages(current, result.OfflineMessages)
 			h.flushMessages(current, h.PendingMessages[current.UserID])
 			delete(h.PendingMessages, current.UserID)
+			delete(h.NeedsSync, current.UserID)
 			h.ReadyClients[current.UserID] = true
 
 		case <-ctx.Done():
-			for uid, client := range h.Clients {
-				closeClientConn(client)
-				close(client.Send)
-				delete(h.ReadyClients, uid)
-				delete(h.PendingMessages, uid)
+			h.CloseAll()
+			for uid := range h.Clients {
 				go func(u uint64) {
 					h.disconnectClient(context.Background(), u)
 				}(uid)
 			}
-			log.Printf("Hub context canceled")
+			logging.With("event_type", "hub_shutdown").Info("hub context canceled")
 			return
 		}
 	}
@@ -124,7 +119,6 @@ func (h *Hub) Run(ctx context.Context) {
 func (h *Hub) forwardLocal(msg *ForwardMessage) bool {
 	target, ok := h.Clients[msg.To]
 	if !ok {
-		log.Printf("User %d is offline, realtime forward skipped and offline sync will rely on persisted messages", msg.To)
 		return false
 	}
 	if !h.ReadyClients[msg.To] {
@@ -147,7 +141,7 @@ func (h *Hub) bootstrapClient(ctx context.Context, client *Client) {
 	if h.Lifecycle != nil {
 		offlinePayloads, err := h.Lifecycle.Bootstrap(ctx, client.UserID)
 		if err != nil {
-			log.Printf("Bootstrap client %d failed: %v", client.UserID, err)
+			logging.With("user_id", client.UserID, "connection_id", client.ConnectionID).Error("bootstrap client failed", "error", err)
 		} else {
 			payloads = offlinePayloads
 		}
@@ -172,7 +166,8 @@ func (h *Hub) enqueuePending(userID uint64, payload []byte) {
 
 	queue := h.PendingMessages[userID]
 	if len(queue) >= maxPendingPerUser {
-		log.Printf("Pending queue for user %d is full, dropping message", userID)
+		h.MarkNeedsSync(userID)
+		logging.With("user_id", userID).Warn("pending queue is full, mark connection needs sync")
 		return
 	}
 	h.PendingMessages[userID] = append(queue, payload)
@@ -188,6 +183,20 @@ func (h *Hub) trySend(client *Client, payload []byte) {
 	select {
 	case client.Send <- payload:
 	default:
-		log.Printf("Send message to %d failed, target not ready", client.UserID)
+		h.MarkNeedsSync(client.UserID)
+		logging.With("user_id", client.UserID, "connection_id", client.ConnectionID).Warn("send queue is full, mark connection needs sync")
+	}
+}
+
+func (h *Hub) MarkNeedsSync(userID uint64) {
+	h.NeedsSync[userID] = true
+}
+
+func (h *Hub) CloseAll() {
+	for uid, client := range h.Clients {
+		closeClientConn(client)
+		close(client.Send)
+		delete(h.ReadyClients, uid)
+		delete(h.PendingMessages, uid)
 	}
 }

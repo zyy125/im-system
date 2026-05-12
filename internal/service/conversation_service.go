@@ -243,17 +243,17 @@ func (s *conversationService) ListGroupMembers(ctx context.Context, userID, conv
 	if err != nil {
 		return nil, err
 	}
+	onlineByUserID, err := s.presenceRepo.BatchGetOnline(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]GroupMember, 0, len(users))
 	for _, user := range users {
-		online, err := s.presenceRepo.IsOnline(ctx, user.ID)
-		if err != nil {
-			return nil, err
-		}
 		items = append(items, GroupMember{
 			UserID:   user.ID,
 			Username: user.Username,
 			Role:     roleByUser[user.ID],
-			Online:   online,
+			Online:   onlineByUserID[user.ID],
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -536,17 +536,9 @@ func (s *conversationService) ListConversations(ctx context.Context, userID uint
 		return nil, err
 	}
 
-	items := make([]ConversationSummary, 0, len(conversations))
-	for _, conversation := range conversations {
-		member, ok := memberByConversation[conversation.ID]
-		if !ok || !member.IsActive() {
-			continue
-		}
-		item, err := s.buildConversationSummary(ctx, userID, conversation)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	items, err := s.buildConversationSummaries(ctx, userID, conversations, memberByConversation)
+	if err != nil {
+		return nil, err
 	}
 
 	sort.Slice(items, func(i, j int) bool {
@@ -580,15 +572,25 @@ func (s *conversationService) ListGroups(ctx context.Context, userID uint64) ([]
 		return []ConversationSummary{}, nil
 	}
 
-	items := make([]ConversationSummary, 0, len(conversations))
-	for _, conversation := range conversations {
-		item, err := s.buildConversationSummary(ctx, userID, conversation)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	members, err := s.conversationRepo.ListMembersByUser(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
-	return items, nil
+	memberByConversation := make(map[uint64]model.ConversationMember, len(members))
+	for _, member := range members {
+		memberByConversation[member.ConversationID] = member
+	}
+	if len(memberByConversation) == 0 {
+		for _, conversation := range conversations {
+			member, err := s.conversationRepo.GetMember(ctx, conversation.ID, userID)
+			if err != nil {
+				return nil, err
+			}
+			memberByConversation[conversation.ID] = member
+		}
+	}
+
+	return s.buildConversationSummaries(ctx, userID, conversations, memberByConversation)
 }
 
 func (s *conversationService) HideConversation(ctx context.Context, userID, conversationID uint64) error {
@@ -643,35 +645,105 @@ func (s *conversationService) buildConversationSummary(ctx context.Context, user
 	return item, nil
 }
 
+func (s *conversationService) buildConversationSummaries(
+	ctx context.Context,
+	userID uint64,
+	conversations []model.Conversation,
+	memberByConversation map[uint64]model.ConversationMember,
+) ([]ConversationSummary, error) {
+	if len(conversations) == 0 {
+		return []ConversationSummary{}, nil
+	}
+
+	conversationIDs := make([]uint64, 0, len(conversations))
+	singlePeerIDs := make([]uint64, 0)
+	peerByConversation := make(map[uint64]uint64)
+	filtered := make([]model.Conversation, 0, len(conversations))
+
+	for _, conversation := range conversations {
+		member, ok := memberByConversation[conversation.ID]
+		if !ok || !member.IsActive() {
+			continue
+		}
+		conversationIDs = append(conversationIDs, conversation.ID)
+		filtered = append(filtered, conversation)
+
+		if !conversation.IsSingle() {
+			continue
+		}
+		peerID, err := extractPeerID(conversation, userID)
+		if err != nil {
+			return nil, err
+		}
+		if peerID == 0 {
+			continue
+		}
+		peerByConversation[conversation.ID] = peerID
+		singlePeerIDs = append(singlePeerIDs, peerID)
+	}
+
+	latestByConversation, err := s.messageRepo.ListLatestByConversationIDs(ctx, conversationIDs)
+	if err != nil {
+		return nil, err
+	}
+	unreadByConversation, err := s.messageRepo.CountUnreadByConversationIDs(ctx, userID, conversationIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	peerUsers := make(map[uint64]model.User)
+	if len(singlePeerIDs) > 0 {
+		users, err := s.userRepo.ListByIDs(ctx, uniqueUserIDs(singlePeerIDs))
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			peerUsers[user.ID] = user
+		}
+	}
+
+	onlineByUserID, err := s.presenceRepo.BatchGetOnline(ctx, uniqueUserIDs(singlePeerIDs))
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]ConversationSummary, 0, len(filtered))
+	for _, conversation := range filtered {
+		item := ConversationSummary{
+			ID:          conversation.ID,
+			Type:        conversation.Type,
+			Name:        conversation.Name,
+			UnreadCount: unreadByConversation[conversation.ID],
+		}
+		if latestMessage, ok := latestByConversation[conversation.ID]; ok {
+			item.LastMessage = &latestMessage
+		}
+		if peerID, ok := peerByConversation[conversation.ID]; ok {
+			user, ok := peerUsers[peerID]
+			if !ok {
+				return nil, apperr.UserNotFound()
+			}
+			item.Peer = &ConversationPeer{
+				ID:       user.ID,
+				Username: user.Username,
+				Online:   onlineByUserID[user.ID],
+			}
+			if item.Name == "" {
+				item.Name = user.Username
+			}
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 func (s *conversationService) buildSingleConversationPeer(ctx context.Context, userID uint64, conversation model.Conversation) (*ConversationPeer, error) {
-	singleKey := conversation.SingleKeyValue()
-	if singleKey == "" {
+	peerID, err := extractPeerID(conversation, userID)
+	if err != nil {
+		return nil, err
+	}
+	if peerID == 0 {
 		return nil, nil
-	}
-
-	parts := strings.Split(singleKey, ":")
-	if len(parts) != 2 {
-		return nil, apperr.ConversationInvalidSingleKey()
-	}
-
-	leftID, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	rightID, err := strconv.ParseUint(parts[1], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	peerID := leftID
-	if leftID == userID {
-		peerID = rightID
-	}
-	if rightID == userID {
-		peerID = leftID
-	}
-	if leftID != userID && rightID != userID {
-		return nil, apperr.ConversationNotAccessible()
 	}
 
 	user, err := s.userRepo.GetByID(ctx, peerID)
@@ -691,6 +763,36 @@ func (s *conversationService) buildSingleConversationPeer(ctx context.Context, u
 		Username: user.Username,
 		Online:   online,
 	}, nil
+}
+
+func extractPeerID(conversation model.Conversation, userID uint64) (uint64, error) {
+	singleKey := conversation.SingleKeyValue()
+	if singleKey == "" {
+		return 0, nil
+	}
+
+	parts := strings.Split(singleKey, ":")
+	if len(parts) != 2 {
+		return 0, apperr.ConversationInvalidSingleKey()
+	}
+
+	leftID, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	rightID, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	switch {
+	case leftID == userID:
+		return rightID, nil
+	case rightID == userID:
+		return leftID, nil
+	default:
+		return 0, apperr.ConversationNotAccessible()
+	}
 }
 
 func (s *conversationService) requireActiveConversationMember(ctx context.Context, conversationID, userID uint64) (model.Conversation, model.ConversationMember, error) {

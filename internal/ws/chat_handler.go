@@ -18,22 +18,22 @@ type MessageAckHandler interface {
 }
 
 type chatSendHandler struct {
-	messageSendService service.MessageSendService
+	messageSendService service.MessageCommandService
 }
 
 type messageAckHandler struct {
-	messageService      service.MessageService
-	conversationService service.ConversationService
+	messageReceiptService   service.MessageReceiptService
+	conversationSyncService service.ConversationSyncService
 }
 
-func NewChatSendHandler(messageSendService service.MessageSendService) ChatSendHandler {
+func NewChatSendHandler(messageSendService service.MessageCommandService) ChatSendHandler {
 	return &chatSendHandler{messageSendService: messageSendService}
 }
 
-func NewMessageAckHandler(messageService service.MessageService, conversationService service.ConversationService) MessageAckHandler {
+func NewMessageAckHandler(messageReceiptService service.MessageReceiptService, conversationSyncService service.ConversationSyncService) MessageAckHandler {
 	return &messageAckHandler{
-		messageService:      messageService,
-		conversationService: conversationService,
+		messageReceiptService:   messageReceiptService,
+		conversationSyncService: conversationSyncService,
 	}
 }
 
@@ -80,10 +80,10 @@ func (h *messageAckHandler) HandleMessageDelivered(ctx context.Context, userID u
 	if req.ConversationID == 0 || req.DeliveredSeq == 0 {
 		return nil, apperr.MessageInvalidPayload()
 	}
-	if h.messageService == nil {
+	if h.messageReceiptService == nil {
 		return nil, apperr.Internal("message service unavailable", nil)
 	}
-	recipients, err := h.messageService.MarkDelivered(ctx, userID, req.ConversationID, req.DeliveredSeq)
+	recipients, err := h.messageReceiptService.MarkDelivered(ctx, userID, req.ConversationID, req.DeliveredSeq)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +102,10 @@ func (h *messageAckHandler) HandleMessageRead(ctx context.Context, userID uint64
 	if req.ConversationID == 0 || req.ReadSeq == 0 {
 		return nil, apperr.MessageInvalidPayload()
 	}
-	if h.conversationService == nil {
+	if h.conversationSyncService == nil {
 		return nil, apperr.Internal("conversation service unavailable", nil)
 	}
-	recipients, err := h.conversationService.MarkRead(ctx, userID, req.ConversationID, req.ReadSeq)
+	recipients, err := h.conversationSyncService.MarkRead(ctx, userID, req.ConversationID, req.ReadSeq)
 	if err != nil {
 		return nil, err
 	}

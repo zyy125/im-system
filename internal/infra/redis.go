@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"log"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -20,6 +19,5 @@ func NewRedisClient(ctx context.Context, addr, password string, db int) (*redis.
 		return nil, err
 	}
 
-	log.Println("Redis client initialized")
 	return rdb, nil
 }

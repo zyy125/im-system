@@ -106,7 +106,7 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 			conversations.POST("/groups/:id/dismiss", conversationHandler.DismissGroup)
 		}
 
-		ws := api.Group("/ws", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
+		ws := api.Group("/ws")
 		{
 			ws.GET("/", wsHandler.HandleWS)
 		}

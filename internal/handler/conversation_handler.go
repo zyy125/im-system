@@ -7,11 +7,15 @@ import (
 )
 
 type ConversationHandler struct {
-	conversationService service.ConversationService
+	queryService   service.ConversationQueryService
+	commandService service.ConversationCommandService
 }
 
-func NewConversationHandler(conversationService service.ConversationService) *ConversationHandler {
-	return &ConversationHandler{conversationService: conversationService}
+func NewConversationHandler(queryService service.ConversationQueryService, commandService service.ConversationCommandService) *ConversationHandler {
+	return &ConversationHandler{
+		queryService:   queryService,
+		commandService: commandService,
+	}
 }
 
 // List 获取会话列表
@@ -27,7 +31,7 @@ func NewConversationHandler(conversationService service.ConversationService) *Co
 func (h *ConversationHandler) List(c *gin.Context) {
 	userID := currentUserID(c)
 
-	conversations, err := h.conversationService.ListConversations(requestContext(c), userID)
+	conversations, err := h.queryService.ListConversations(requestContext(c), userID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -61,7 +65,7 @@ func (h *ConversationHandler) Hide(c *gin.Context) {
 		return
 	}
 
-	if err := h.conversationService.HideConversation(requestContext(c), userID, conversationID); err != nil {
+	if err := h.commandService.HideConversation(requestContext(c), userID, conversationID); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -89,7 +93,7 @@ func (h *ConversationHandler) Open(c *gin.Context) {
 		return
 	}
 
-	conversation, err := h.conversationService.OpenConversation(requestContext(c), userID, conversationID)
+	conversation, err := h.queryService.OpenConversation(requestContext(c), userID, conversationID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -110,7 +114,7 @@ func (h *ConversationHandler) Open(c *gin.Context) {
 func (h *ConversationHandler) ListGroups(c *gin.Context) {
 	userID := currentUserID(c)
 
-	conversations, err := h.conversationService.ListGroups(requestContext(c), userID)
+	conversations, err := h.queryService.ListGroups(requestContext(c), userID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -145,7 +149,7 @@ func (h *ConversationHandler) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	conversation, err := h.conversationService.CreateGroup(requestContext(c), userID, req.Name, req.MemberIDs)
+	conversation, err := h.commandService.CreateGroup(requestContext(c), userID, req.Name, req.MemberIDs)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -174,7 +178,7 @@ func (h *ConversationHandler) GetGroupDetail(c *gin.Context) {
 		return
 	}
 
-	group, err := h.conversationService.GetGroupDetail(requestContext(c), userID, conversationID)
+	group, err := h.queryService.GetGroupDetail(requestContext(c), userID, conversationID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -203,7 +207,7 @@ func (h *ConversationHandler) ListGroupMembers(c *gin.Context) {
 		return
 	}
 
-	members, err := h.conversationService.ListGroupMembers(requestContext(c), userID, conversationID)
+	members, err := h.queryService.ListGroupMembers(requestContext(c), userID, conversationID)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -247,7 +251,7 @@ func (h *ConversationHandler) UpdateGroupName(c *gin.Context) {
 		return
 	}
 
-	if err := h.conversationService.UpdateGroupName(requestContext(c), userID, conversationID, req.Name); err != nil {
+	if err := h.commandService.UpdateGroupName(requestContext(c), userID, conversationID, req.Name); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -282,7 +286,7 @@ func (h *ConversationHandler) InviteGroupMembers(c *gin.Context) {
 		return
 	}
 
-	if err := h.conversationService.InviteGroupMembers(requestContext(c), userID, conversationID, req.MemberIDs); err != nil {
+	if err := h.commandService.InviteGroupMembers(requestContext(c), userID, conversationID, req.MemberIDs); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -315,7 +319,7 @@ func (h *ConversationHandler) RemoveGroupMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.conversationService.RemoveGroupMember(requestContext(c), userID, conversationID, memberID); err != nil {
+	if err := h.commandService.RemoveGroupMember(requestContext(c), userID, conversationID, memberID); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -344,7 +348,7 @@ func (h *ConversationHandler) LeaveGroup(c *gin.Context) {
 		return
 	}
 
-	if err := h.conversationService.LeaveGroup(requestContext(c), userID, conversationID); err != nil {
+	if err := h.commandService.LeaveGroup(requestContext(c), userID, conversationID); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -372,7 +376,7 @@ func (h *ConversationHandler) DismissGroup(c *gin.Context) {
 		return
 	}
 
-	if err := h.conversationService.DismissGroup(requestContext(c), userID, conversationID); err != nil {
+	if err := h.commandService.DismissGroup(requestContext(c), userID, conversationID); err != nil {
 		respondError(c, err)
 		return
 	}

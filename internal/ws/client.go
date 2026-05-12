@@ -2,11 +2,11 @@ package ws
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/zyy125/im-system/internal/apperr"
+	"github.com/zyy125/im-system/internal/logging"
 )
 
 var (
@@ -17,12 +17,14 @@ var (
 )
 
 type Client struct {
-	UserID      uint64          `json:"user_id"`
-	Conn        *websocket.Conn `json:"conn"`
-	Send        chan []byte     `json:"send"`
-	Hub         *Hub            `json:"hub"`
-	ChatHandler ChatSendHandler `json:"-"`
-	AckHandler  MessageAckHandler
+	ConnectionID string            `json:"connection_id"`
+	UserID       uint64            `json:"user_id"`
+	Conn         *websocket.Conn   `json:"conn"`
+	Send         chan []byte       `json:"send"`
+	Hub          *Hub              `json:"hub"`
+	ChatHandler  ChatSendHandler   `json:"-"`
+	AckHandler   MessageAckHandler `json:"-"`
+	Lifecycle    ClientLifecycle   `json:"-"`
 }
 
 func (c *Client) ReadPump(ctx context.Context) {
@@ -31,23 +33,27 @@ func (c *Client) ReadPump(ctx context.Context) {
 		c.Conn.Close()
 	}()
 
+	logger := logging.FromContext(ctx)
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+		if c.Lifecycle != nil {
+			c.Lifecycle.Refresh(ctx, c.UserID)
+		}
 		return nil
 	})
 
 	for {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
-			log.Printf("Client %d read message error: %v", c.UserID, err)
+			logger.Info("read pump stopped", "error", err)
 			break
 		}
 
 		env, err := DecodeEnvelope(message)
 		if err != nil {
-			log.Printf("Client %d decode client message error: %v", c.UserID, err)
+			logger.Warn("decode client envelope failed", "error", err)
 			c.writeError(err)
 			continue
 		}
@@ -56,86 +62,81 @@ func (c *Client) ReadPump(ctx context.Context) {
 		case EventTypeMessageSend:
 			req, err := DecodeClientMessageSendData(env.Data)
 			if err != nil {
-				log.Printf("Client %d decode message send payload error: %v", c.UserID, err)
+				logger.Warn("decode message send payload failed", "error", err)
 				c.writeError(err)
 				continue
 			}
 			if c.ChatHandler == nil {
 				err := apperr.Internal("chat handler unavailable", nil)
-				log.Printf("Client %d chat handler unavailable", c.UserID)
+				logger.Error("chat handler unavailable")
 				c.writeError(err)
 				continue
 			}
 			forwardMsgs, err := c.ChatHandler.HandleMessageSend(ctx, c.UserID, req)
 			if err != nil {
-				log.Printf("Client %d handle message send error: %v", c.UserID, err)
+				logger.Warn("handle message send failed", "conversation_id", req.ConversationID, "msg_id", req.MsgID, "error", err)
 				c.writeError(err)
 				continue
 			}
-			for _, forwardMsg := range forwardMsgs {
-				select {
-				case c.Hub.Forward <- forwardMsg:
-				default:
-					log.Printf("Client %d forward message dropped", c.UserID)
-				}
-			}
+			c.forwardAll(ctx, forwardMsgs)
 
 		case EventTypeMessageDelivered:
 			req, err := DecodeClientMessageDeliveredData(env.Data)
 			if err != nil {
-				log.Printf("Client %d decode message delivered payload error: %v", c.UserID, err)
+				logger.Warn("decode message delivered payload failed", "error", err)
 				c.writeError(err)
 				continue
 			}
 			if c.AckHandler == nil {
 				err := apperr.Internal("receipt handler unavailable", nil)
-				log.Printf("Client %d receipt handler unavailable", c.UserID)
+				logger.Error("receipt handler unavailable")
 				c.writeError(err)
 				continue
 			}
 			forwardMsgs, err := c.AckHandler.HandleMessageDelivered(ctx, c.UserID, req)
 			if err != nil {
-				log.Printf("Client %d handle message delivered error: %v", c.UserID, err)
+				logger.Warn("handle message delivered failed", "conversation_id", req.ConversationID, "error", err)
 				c.writeError(err)
 				continue
 			}
-			c.forwardAll(forwardMsgs)
+			c.forwardAll(ctx, forwardMsgs)
 
 		case EventTypeMessageRead:
 			req, err := DecodeClientMessageReadData(env.Data)
 			if err != nil {
-				log.Printf("Client %d decode message read payload error: %v", c.UserID, err)
+				logger.Warn("decode message read payload failed", "error", err)
 				c.writeError(err)
 				continue
 			}
 			if c.AckHandler == nil {
 				err := apperr.Internal("receipt handler unavailable", nil)
-				log.Printf("Client %d receipt handler unavailable", c.UserID)
+				logger.Error("receipt handler unavailable")
 				c.writeError(err)
 				continue
 			}
 			forwardMsgs, err := c.AckHandler.HandleMessageRead(ctx, c.UserID, req)
 			if err != nil {
-				log.Printf("Client %d handle message read error: %v", c.UserID, err)
+				logger.Warn("handle message read failed", "conversation_id", req.ConversationID, "error", err)
 				c.writeError(err)
 				continue
 			}
-			c.forwardAll(forwardMsgs)
+			c.forwardAll(ctx, forwardMsgs)
 
 		default:
 			err := apperr.MessageInvalidPayload()
-			log.Printf("Client %d received unsupported ws event type=%s", c.UserID, env.Type)
+			logger.Warn("received unsupported ws event", "event_type", env.Type)
 			c.writeError(err)
 		}
 	}
 }
 
-func (c *Client) forwardAll(forwardMsgs []*ForwardMessage) {
+func (c *Client) forwardAll(ctx context.Context, forwardMsgs []*ForwardMessage) {
 	for _, forwardMsg := range forwardMsgs {
 		select {
 		case c.Hub.Forward <- forwardMsg:
 		default:
-			log.Printf("Client %d forward message dropped", c.UserID)
+			c.Hub.MarkNeedsSync(forwardMsg.To)
+			logging.FromContext(ctx).With("target_user_id", forwardMsg.To).Warn("forward queue full, mark connection needs sync")
 		}
 	}
 }
@@ -147,13 +148,13 @@ func (c *Client) writeError(err error) {
 		Message: appErr.Message,
 	})
 	if marshalErr != nil {
-		log.Printf("Client %d marshal error payload failed: %v", c.UserID, marshalErr)
+		logging.With("user_id", c.UserID, "connection_id", c.ConnectionID).Error("marshal error payload failed", "error", marshalErr)
 		return
 	}
 	select {
 	case c.Send <- payload:
 	default:
-		log.Printf("Client %d error payload dropped: send queue full", c.UserID)
+		logging.With("user_id", c.UserID, "connection_id", c.ConnectionID).Warn("error payload dropped: send queue full")
 	}
 }
 
@@ -162,11 +163,14 @@ func (c *Client) WritePump(ctx context.Context) {
 		c.Conn.Close()
 	}()
 
+	logger := logging.FromContext(ctx)
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case message, ok := <-c.Send:
 			if !ok {
 				_ = c.writeMessage(websocket.CloseMessage, []byte{})
@@ -174,13 +178,16 @@ func (c *Client) WritePump(ctx context.Context) {
 			}
 
 			if err := c.writeMessage(websocket.TextMessage, message); err != nil {
-				log.Printf("Client %d write message error: %v", c.UserID, err)
+				logger.Info("write message failed", "error", err)
 				return
 			}
 
 		case <-ticker.C:
+			if c.Lifecycle != nil {
+				c.Lifecycle.Refresh(ctx, c.UserID)
+			}
 			if err := c.writeMessage(websocket.PingMessage, []byte{}); err != nil {
-				log.Printf("Client %d write ping message error: %v", c.UserID, err)
+				logger.Info("write ping failed", "error", err)
 				return
 			}
 		}

@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/api/v1/auth/login": {
             "post": {
-                "description": "用户登录，返回JWT token",
+                "description": "用户登录，返回 JWT token。后续 HTTP 受保护接口必须通过 ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + ` 传递。",
                 "consumes": [
                     "application/json"
                 ],
@@ -86,7 +86,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "用户登出，将JWT token加入黑名单",
+                "description": "用户登出，将当前 Bearer token 的 jti 加入黑名单；普通 HTTP 接口不接受 query token。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1819,7 +1819,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送",
+                "description": "建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送。优先使用 ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + `；浏览器场景可使用 ` + "`" + `?token=\u003cjwt\u003e` + "`" + `。生产环境会按 ` + "`" + `ws.allowed_origins` + "`" + ` 校验 Origin。",
                 "produces": [
                     "text/plain"
                 ],
@@ -1827,6 +1827,20 @@ const docTemplate = `{
                     "WebSocket"
                 ],
                 "summary": "建立 WebSocket 连接",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer JWT，优先使用",
+                        "name": "Authorization",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "仅限 WebSocket 握手使用的 JWT query token",
+                        "name": "token",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "101": {
                         "description": "Switching Protocols",
@@ -1836,6 +1850,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Origin 不在允许列表中",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
@@ -2400,6 +2420,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
+            "description": "HTTP 受保护接口必须使用 Bearer Token；WebSocket 握手也支持该 Header。",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -2414,7 +2435,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "IM System API",
-	Description:      "This is a IM System API.",
+	Description:      "单体 IM 后端 API。HTTP 受保护接口只接受 `Authorization: Bearer <token>`；WebSocket 握手接受 `Authorization: Bearer <token>`，并仅为浏览器兼容保留 `?token=<jwt>`。生产环境要求显式配置 `ws.allowed_origins`，运行配置新增 `app.http_addr`、`ws.allowed_origins`、`presence.ttl`、`presence.heartbeat_interval`。",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

@@ -53,6 +53,13 @@ func (r *inMemoryPresenceRepo) SetOnline(_ context.Context, userID uint64) error
 	return nil
 }
 
+func (r *inMemoryPresenceRepo) RefreshOnline(_ context.Context, userID uint64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.online[userID] = true
+	return nil
+}
+
 func (r *inMemoryPresenceRepo) SetOffline(_ context.Context, userID uint64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -64,6 +71,16 @@ func (r *inMemoryPresenceRepo) IsOnline(_ context.Context, userID uint64) (bool,
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.online[userID], nil
+}
+
+func (r *inMemoryPresenceRepo) BatchGetOnline(_ context.Context, userIDs []uint64) (map[uint64]bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[uint64]bool, len(userIDs))
+	for _, userID := range userIDs {
+		result[userID] = r.online[userID]
+	}
+	return result, nil
 }
 
 type inMemoryTokenBlacklistRepo struct {
@@ -126,10 +143,16 @@ func newTestEnv(t *testing.T) *testEnv {
 	blacklistRepo := newInMemoryTokenBlacklistRepo()
 
 	cfg := &config.Config{
+		App: config.App{
+			Env:      "test",
+			HTTPAddr: ":0",
+		},
 		JWT: config.JWT{
 			Secret: "test-secret",
 			Expiry: 24,
 		},
+		WS:       config.WS{},
+		Presence: config.Presence{},
 	}
 
 	seqAllocator := service.NewSeqAllocator(messageRepo, messageStateRepo)
@@ -144,12 +167,12 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	engine := router.InitRouter(&router.InitRouterParams{
 		AuthHandler:          handler.NewAuthHandler(service.NewAuthService(userRepo, &cfg.JWT, blacklistRepo)),
-		WSHandler:            handler.NewWSHandler(hub, messageSendSvc, messageSvc, conversationSvc),
+		WSHandler:            handler.NewWSHandler(hub, messageSendSvc, messageSvc, conversationSvc, cfg.JWT.Secret, blacklistRepo, cfg.WS, cfg.App.Env),
 		UserHandler:          handler.NewUserHandler(service.NewUserService(userRepo, presenceRepo)),
 		FriendHandler:        handler.NewFriendHandler(friendSvc),
 		FriendRequestHandler: handler.NewFriendRequestHandler(service.NewFriendRequestService(friendRequestRepo, friendSvc, userRepo, presenceRepo)),
 		MessageHandler:       handler.NewMessageHandler(messageSvc, conversationSvc),
-		ConversationHandler:  handler.NewConversationHandler(conversationSvc),
+		ConversationHandler:  handler.NewConversationHandler(conversationSvc, conversationSvc),
 		BlacklistRepo:        blacklistRepo,
 		JwtCfg:               &cfg.JWT,
 	})

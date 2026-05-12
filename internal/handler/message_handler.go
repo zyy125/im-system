@@ -10,17 +10,17 @@ import (
 )
 
 type MessageHandler struct {
-	messageService      service.MessageService
-	conversationService service.ConversationService
+	messageQueryService     service.MessageQueryService
+	conversationSyncService service.ConversationSyncService
 }
 
 func NewMessageHandler(
-	messageService service.MessageService,
-	conversationService service.ConversationService,
+	messageQueryService service.MessageQueryService,
+	conversationSyncService service.ConversationSyncService,
 ) *MessageHandler {
 	return &MessageHandler{
-		messageService:      messageService,
-		conversationService: conversationService,
+		messageQueryService:     messageQueryService,
+		conversationSyncService: conversationSyncService,
 	}
 }
 
@@ -57,7 +57,7 @@ func (h *MessageHandler) History(c *gin.Context) {
 		beforeSeq = parsed
 	}
 
-	msgs, hasMore, err := h.messageService.ListConversationHistory(requestContext(c), userID, conversationID, limit, beforeSeq)
+	msgs, hasMore, err := h.messageQueryService.ListConversationHistory(requestContext(c), userID, conversationID, limit, beforeSeq)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -108,7 +108,7 @@ func (h *MessageHandler) Sync(c *gin.Context) {
 		afterSeq = parsed
 	}
 
-	msgs, hasMore, err := h.messageService.SyncConversation(requestContext(c), userID, conversationID, afterSeq, limit)
+	msgs, hasMore, err := h.messageQueryService.SyncConversation(requestContext(c), userID, conversationID, afterSeq, limit)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -155,7 +155,7 @@ func (h *MessageHandler) MarkRead(c *gin.Context) {
 		return
 	}
 
-	if _, err := h.conversationService.MarkRead(requestContext(c), userID, req.ConversationID, req.ReadSeq); err != nil {
+	if _, err := h.conversationSyncService.MarkRead(requestContext(c), userID, req.ConversationID, req.ReadSeq); err != nil {
 		respondError(c, err)
 		return
 	}

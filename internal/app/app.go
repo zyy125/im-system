@@ -2,41 +2,112 @@ package app
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/zyy125/im-system/config"
 	"github.com/zyy125/im-system/internal/infra"
+	"github.com/zyy125/im-system/internal/logging"
+	"github.com/zyy125/im-system/internal/ws"
 )
 
-// App 是应用入口，目前只暴露 Gin 路由引擎供外部调用 Run。
 type App struct {
-	Router *gin.Engine
+	Router      *gin.Engine
+	Server      *http.Server
+	Hub         *ws.Hub
+	RedisClient *redis.Client
+	SQLDB       *sql.DB
+
+	hubCancel    context.CancelFunc
+	shutdownOnce sync.Once
 }
 
-const defaultHTTPAddr = ":8080"
-
-// Run 初始化 API 进程并启动 HTTP 服务。
 func Run(ctx context.Context, cfg *config.Config) error {
 	app, err := InitApp(cfg, ctx)
 	if err != nil {
 		return err
 	}
-	return app.Run(defaultHTTPAddr)
+	return app.Start(ctx)
 }
 
-// Run 启动当前应用实例的 HTTP 服务。
-func (a *App) Run(addr string) error {
-	return a.Router.Run(addr)
+func (a *App) Start(ctx context.Context) error {
+	if a == nil || a.Server == nil {
+		return errors.New("app server is not initialized")
+	}
+
+	hubCtx, hubCancel := context.WithCancel(context.Background())
+	a.hubCancel = hubCancel
+	if a.Hub != nil {
+		go a.Hub.Run(hubCtx)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		err := a.Server.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			_ = a.Shutdown(context.Background())
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return a.Shutdown(shutdownCtx)
+	}
 }
 
-// InitApp 按顺序完成以下装配步骤：
-//  1. 连接 MySQL 和 Redis
-//  2. 初始化所有 repository
-//  3. 初始化所有 service
-//  4. 初始化实时组件（Hub）并启动后台 goroutine
-//  5. 初始化 handler 并构建 Gin 路由
+func (a *App) Shutdown(ctx context.Context) error {
+	if a == nil {
+		return nil
+	}
+
+	var shutdownErr error
+	a.shutdownOnce.Do(func() {
+		if a.hubCancel != nil {
+			a.hubCancel()
+		}
+		if a.Hub != nil {
+			a.Hub.CloseAll()
+		}
+		if a.Server != nil {
+			if err := a.Server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				shutdownErr = err
+			}
+		}
+		if a.RedisClient != nil {
+			if err := a.RedisClient.Close(); err != nil && shutdownErr == nil {
+				shutdownErr = err
+			}
+		}
+		if a.SQLDB != nil {
+			if err := a.SQLDB.Close(); err != nil && shutdownErr == nil {
+				shutdownErr = err
+			}
+		}
+	})
+	return shutdownErr
+}
+
 func InitApp(cfg *config.Config, ctx context.Context) (*App, error) {
 	db, err := infra.NewMySQL(cfg.Mysql.DSN)
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
 	}
@@ -45,17 +116,28 @@ func InitApp(cfg *config.Config, ctx context.Context) (*App, error) {
 		return nil, err
 	}
 
-	repos := initRepositories(db, rdb)
+	repos := initRepositories(cfg, db, rdb)
 	svcs := initServices(cfg, repos)
 
 	rt, err := initRealtime(cfg, repos, svcs)
 	if err != nil {
 		return nil, err
 	}
-	if err := startRealtime(ctx, rt); err != nil {
-		return nil, err
+	hs := initHandlers(cfg, repos, rt, svcs)
+	engine := buildRouter(hs, repos, cfg)
+
+	server := &http.Server{
+		Addr:    cfg.App.HTTPAddr,
+		Handler: engine,
 	}
 
-	hs := initHandlers(rt, svcs)
-	return &App{Router: buildRouter(hs, repos, cfg)}, nil
+	logging.With("http_addr", cfg.App.HTTPAddr, "env", cfg.App.Env).Info("application initialized")
+
+	return &App{
+		Router:      engine,
+		Server:      server,
+		Hub:         rt.hub,
+		RedisClient: rdb,
+		SQLDB:       sqlDB,
+	}, nil
 }

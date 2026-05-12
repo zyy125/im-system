@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -11,57 +13,83 @@ import (
 	"github.com/zyy125/im-system/pkg/response"
 )
 
+type AuthResult struct {
+	UserID uint64
+	JTI    string
+}
+
 func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistRepo) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.Request.Header.Get("Authorization")
-		if token == "" {
-			token = c.Query("token")
-		}
-		token = strings.TrimSpace(token)
-		lower := strings.ToLower(token)
-		if strings.HasPrefix(lower, "bearer ") {
-			token = token[7:]
-		}
-
-		if token == "" {
-			abortUnauthorized(c, apperr.TokenMissing())
-			return
-		}
-
-		claims, err := jwt.ParseJWT(token, secret)
+		result, err := AuthenticateHTTPRequest(c.Request, secret, tokenBlacklistRepo)
 		if err != nil {
-			abortUnauthorized(c, apperr.TokenInvalid())
+			abortUnauthorized(c, err)
 			return
 		}
 
-		jti := claims.ID
-		if jti == "" {
-			abortUnauthorized(c, apperr.TokenInvalid())
-			return
-		}
-
-		bl, err := tokenBlacklistRepo.IsBlacklisted(c.Request.Context(), jti)
-		if err != nil {
-			response.FailError(c, err)
-			c.Abort()
-			return
-		}
-		if bl {
-			abortUnauthorized(c, apperr.TokenBlacklisted())
-			return
-		}
-
-		uid, _ := strconv.ParseUint(claims.UserID, 10, 64)
-		if uid <= 0 {
-			abortUnauthorized(c, apperr.TokenInvalid())
-			return
-		}
-
-		c.Set("userID", uid)
-		c.Set("jti", jti)
-
+		c.Set("userID", result.UserID)
+		c.Set("jti", result.JTI)
 		c.Next()
 	}
+}
+
+func AuthenticateHTTPRequest(r *http.Request, secret string, tokenBlacklistRepo repository.TokenBlacklistRepo) (AuthResult, error) {
+	token := parseBearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		return AuthResult{}, apperr.TokenMissing()
+	}
+	return authenticateToken(r.Context(), token, secret, tokenBlacklistRepo)
+}
+
+func AuthenticateWSRequest(r *http.Request, secret string, tokenBlacklistRepo repository.TokenBlacklistRepo) (AuthResult, error) {
+	token := parseBearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		token = strings.TrimSpace(r.URL.Query().Get("token"))
+	}
+	if token == "" {
+		return AuthResult{}, apperr.TokenMissing()
+	}
+	return authenticateToken(r.Context(), token, secret, tokenBlacklistRepo)
+}
+
+func authenticateToken(ctx context.Context, token, secret string, tokenBlacklistRepo repository.TokenBlacklistRepo) (AuthResult, error) {
+	claims, err := jwt.ParseJWT(token, secret)
+	if err != nil {
+		return AuthResult{}, apperr.TokenInvalid()
+	}
+	if claims.ID == "" {
+		return AuthResult{}, apperr.TokenInvalid()
+	}
+
+	blacklisted, err := tokenBlacklistRepo.IsBlacklisted(ctx, claims.ID)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	if blacklisted {
+		return AuthResult{}, apperr.TokenBlacklisted()
+	}
+
+	uid, err := strconv.ParseUint(claims.UserID, 10, 64)
+	if err != nil || uid == 0 {
+		return AuthResult{}, apperr.TokenInvalid()
+	}
+
+	return AuthResult{
+		UserID: uid,
+		JTI:    claims.ID,
+	}, nil
+}
+
+func parseBearerToken(headerValue string) string {
+	token := strings.TrimSpace(headerValue)
+	if token == "" {
+		return ""
+	}
+
+	lower := strings.ToLower(token)
+	if !strings.HasPrefix(lower, "bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(token[7:])
 }
 
 func abortUnauthorized(c *gin.Context, err error) {

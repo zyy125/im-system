@@ -31,6 +31,11 @@ func (r *hubTestPresenceRepo) SetOnline(_ context.Context, userID uint64) error 
 	return nil
 }
 
+func (r *hubTestPresenceRepo) RefreshOnline(_ context.Context, userID uint64) error {
+	r.online[userID] = true
+	return nil
+}
+
 func (r *hubTestPresenceRepo) SetOffline(_ context.Context, userID uint64) error {
 	delete(r.online, userID)
 	r.setOffline <- userID
@@ -39,6 +44,14 @@ func (r *hubTestPresenceRepo) SetOffline(_ context.Context, userID uint64) error
 
 func (r *hubTestPresenceRepo) IsOnline(_ context.Context, userID uint64) (bool, error) {
 	return r.online[userID], nil
+}
+
+func (r *hubTestPresenceRepo) BatchGetOnline(_ context.Context, userIDs []uint64) (map[uint64]bool, error) {
+	result := make(map[uint64]bool, len(userIDs))
+	for _, userID := range userIDs {
+		result[userID] = r.online[userID]
+	}
+	return result, nil
 }
 
 type hubTestOfflineLoader struct {

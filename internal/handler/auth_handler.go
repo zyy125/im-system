@@ -40,7 +40,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 // Login 用户登录
 // @Summary 用户登录
-// @Description 用户登录，返回JWT token
+// @Description 用户登录，返回 JWT token。后续 HTTP 受保护接口必须通过 `Authorization: Bearer <token>` 传递。
 // @Tags 用户
 // @Accept json
 // @Produce json
@@ -66,7 +66,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Logout 用户登出
 // @Summary 用户登出
-// @Description 用户登出，将JWT token加入黑名单
+// @Description 用户登出，将当前 Bearer token 的 jti 加入黑名单；普通 HTTP 接口不接受 query token。
 // @Tags 用户
 // @Accept json
 // @Produce json

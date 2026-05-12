@@ -1,23 +1,29 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 // Config 是整个应用的顶层配置结构，由 config.yaml 映射而来。
 type Config struct {
-	App   App   `mapstructure:"app"`
-	Mysql Mysql `mapstructure:"mysql"`
-	Redis Redis `mapstructure:"redis"`
-	JWT   JWT   `mapstructure:"jwt"`
+	App      App      `mapstructure:"app"`
+	Mysql    Mysql    `mapstructure:"mysql"`
+	Redis    Redis    `mapstructure:"redis"`
+	JWT      JWT      `mapstructure:"jwt"`
+	WS       WS       `mapstructure:"ws"`
+	Presence Presence `mapstructure:"presence"`
 }
 
 // App 保存应用级配置。
 type App struct {
-	// Env 标识运行环境。设为 production/prod 时会启用更严格的启动校验。
-	Env string `mapstructure:"env"`
+	Env      string `mapstructure:"env"`
+	HTTPAddr string `mapstructure:"http_addr"`
 }
 
 // Mysql 保存 MySQL 连接串。
@@ -36,6 +42,15 @@ type Redis struct {
 type JWT struct {
 	Secret string `mapstructure:"secret"`
 	Expiry int64  `mapstructure:"expiry"`
+}
+
+type WS struct {
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
+}
+
+type Presence struct {
+	TTL               time.Duration `mapstructure:"ttl"`
+	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
 }
 
 // LoadConfig 从 ./config/config.yaml 或当前目录读取配置，
@@ -61,4 +76,62 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func (c *Config) Validate() error {
+	if c == nil {
+		return errors.New("config is nil")
+	}
+
+	c.App.Env = normalizeEnv(c.App.Env)
+	if !slices.Contains([]string{"development", "test", "production"}, c.App.Env) {
+		return fmt.Errorf("invalid app.env: %q", c.App.Env)
+	}
+	if strings.TrimSpace(c.App.HTTPAddr) == "" {
+		return errors.New("app.http_addr is required")
+	}
+	if strings.TrimSpace(c.Mysql.DSN) == "" {
+		return errors.New("mysql.dsn is required")
+	}
+	if strings.TrimSpace(c.Redis.Addr) == "" {
+		return errors.New("redis.addr is required")
+	}
+	if strings.TrimSpace(c.JWT.Secret) == "" {
+		return errors.New("jwt.secret is required")
+	}
+	if c.App.Env == "production" && len(strings.TrimSpace(c.JWT.Secret)) < 16 {
+		return errors.New("jwt.secret must be at least 16 characters in production")
+	}
+	if c.JWT.Expiry <= 0 {
+		return errors.New("jwt.expiry must be greater than 0")
+	}
+	if c.Presence.TTL <= 0 {
+		return errors.New("presence.ttl must be greater than 0")
+	}
+	if c.Presence.HeartbeatInterval <= 0 {
+		return errors.New("presence.heartbeat_interval must be greater than 0")
+	}
+	if c.Presence.HeartbeatInterval >= c.Presence.TTL {
+		return errors.New("presence.heartbeat_interval must be smaller than presence.ttl")
+	}
+	if c.App.Env == "production" && len(c.WS.AllowedOrigins) == 0 {
+		return errors.New("ws.allowed_origins is required in production")
+	}
+	for i, origin := range c.WS.AllowedOrigins {
+		c.WS.AllowedOrigins[i] = strings.TrimSpace(origin)
+	}
+	return nil
+}
+
+func normalizeEnv(env string) string {
+	switch strings.ToLower(strings.TrimSpace(env)) {
+	case "", "dev", "development":
+		return "development"
+	case "test":
+		return "test"
+	case "prod", "production":
+		return "production"
+	default:
+		return strings.ToLower(strings.TrimSpace(env))
+	}
 }

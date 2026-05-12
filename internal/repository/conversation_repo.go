@@ -26,6 +26,8 @@ type ConversationRepo interface {
 	ListActiveGroupsByUser(ctx context.Context, userID uint64) ([]model.Conversation, error)
 	// ListActiveMembers 查询某个会话下当前仍有效的成员。
 	ListActiveMembers(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error)
+	// ListActiveMembersByConversationIDs 批量查询多个会话下当前有效成员。
+	ListActiveMembersByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error)
 	// CountActiveMembers 统计某个会话当前活跃成员数。
 	CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error)
 	// GetMember 查询某个用户在指定会话中的成员记录。
@@ -195,6 +197,26 @@ func (r *conversationRepo) ListActiveMembers(ctx context.Context, conversationID
 		return nil, err
 	}
 	return members, nil
+}
+
+func (r *conversationRepo) ListActiveMembersByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error) {
+	result := make(map[uint64][]model.ConversationMember, len(conversationIDs))
+	if len(conversationIDs) == 0 {
+		return result, nil
+	}
+
+	var members []model.ConversationMember
+	if err := r.db.WithContext(ctx).
+		Where("conversation_id IN ? AND status = ?", conversationIDs, model.ConversationMemberStatusActive).
+		Order("conversation_id ASC, user_id ASC").
+		Find(&members).Error; err != nil {
+		return nil, err
+	}
+
+	for _, member := range members {
+		result[member.ConversationID] = append(result[member.ConversationID], member)
+	}
+	return result, nil
 }
 
 func (r *conversationRepo) CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error) {

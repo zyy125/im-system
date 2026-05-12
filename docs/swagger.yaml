@@ -374,7 +374,9 @@ definitions:
 host: localhost:8080
 info:
   contact: {}
-  description: This is a IM System API.
+  description: '单体 IM 后端 API。HTTP 受保护接口只接受 `Authorization: Bearer <token>`；WebSocket
+    握手接受 `Authorization: Bearer <token>`，并仅为浏览器兼容保留 `?token=<jwt>`。生产环境要求显式配置 `ws.allowed_origins`，运行配置新增
+    `app.http_addr`、`ws.allowed_origins`、`presence.ttl`、`presence.heartbeat_interval`。'
   title: IM System API
   version: "1.0"
 paths:
@@ -382,7 +384,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 用户登录，返回JWT token
+      description: '用户登录，返回 JWT token。后续 HTTP 受保护接口必须通过 `Authorization: Bearer <token>`
+        传递。'
       parameters:
       - description: 用户登录请求
         in: body
@@ -421,7 +424,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 用户登出，将JWT token加入黑名单
+      description: 用户登出，将当前 Bearer token 的 jti 加入黑名单；普通 HTTP 接口不接受 query token。
       produces:
       - application/json
       responses:
@@ -1488,7 +1491,17 @@ paths:
       - 用户
   /api/v1/ws/:
     get:
-      description: 建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送
+      description: '建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送。优先使用 `Authorization: Bearer
+        <token>`；浏览器场景可使用 `?token=<jwt>`。生产环境会按 `ws.allowed_origins` 校验 Origin。'
+      parameters:
+      - description: Bearer JWT，优先使用
+        in: header
+        name: Authorization
+        type: string
+      - description: 仅限 WebSocket 握手使用的 JWT query token
+        in: query
+        name: token
+        type: string
       produces:
       - text/plain
       responses:
@@ -1498,6 +1511,10 @@ paths:
             type: string
         "401":
           description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Origin 不在允许列表中
           schema:
             $ref: '#/definitions/response.Response'
         "500":
@@ -1511,6 +1528,7 @@ paths:
       - WebSocket
 securityDefinitions:
   BearerAuth:
+    description: HTTP 受保护接口必须使用 Bearer Token；WebSocket 握手也支持该 Header。
     in: header
     name: Authorization
     type: apiKey

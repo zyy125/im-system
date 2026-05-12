@@ -1,8 +1,6 @@
 package infra
 
 import (
-	"log"
-
 	"github.com/zyy125/im-system/internal/model"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -18,7 +16,6 @@ func NewMySQL(dsn string) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	log.Println("MySQL connection and auto migration successful")
 	return db, nil
 }
 

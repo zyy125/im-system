@@ -1,8 +1,6 @@
 package app
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/zyy125/im-system/config"
@@ -55,11 +53,11 @@ type handlers struct {
 	conversationHandler  *handler.ConversationHandler
 }
 
-func initRepositories(db *gorm.DB, rdb *redis.Client) *repositories {
+func initRepositories(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *repositories {
 	return &repositories{
 		userRepo:          repository.NewUserRepo(db),
 		blacklistRepo:     repository.NewTokenBlacklistRepo(rdb),
-		presenceRepo:      repository.NewPresenceRepo(rdb),
+		presenceRepo:      repository.NewPresenceRepo(rdb, cfg.Presence.TTL),
 		msgRepo:           repository.NewMessageRepo(db),
 		friendRepo:        repository.NewFriendRepo(db),
 		friendRequestRepo: repository.NewFriendRequestRepo(db),
@@ -107,15 +105,15 @@ func initRealtime(cfg *config.Config, repos *repositories, svcs *services) (*rea
 	}, nil
 }
 
-func initHandlers(rt *realtimeComponents, svcs *services) *handlers {
+func initHandlers(cfg *config.Config, repos *repositories, rt *realtimeComponents, svcs *services) *handlers {
 	return &handlers{
 		authHandler:          handler.NewAuthHandler(svcs.authSvc),
-		wsHandler:            handler.NewWSHandler(rt.hub, svcs.messageSendSvc, svcs.messageSvc, svcs.conversationSvc),
+		wsHandler:            handler.NewWSHandler(rt.hub, svcs.messageSendSvc, svcs.messageSvc, svcs.conversationSvc, cfg.JWT.Secret, repos.blacklistRepo, cfg.WS, cfg.App.Env),
 		userHandler:          handler.NewUserHandler(svcs.userSvc),
 		friendHandler:        handler.NewFriendHandler(svcs.friendSvc),
 		friendRequestHandler: handler.NewFriendRequestHandler(svcs.friendRequestSvc),
 		messageHandler:       handler.NewMessageHandler(svcs.messageSvc, svcs.conversationSvc),
-		conversationHandler:  handler.NewConversationHandler(svcs.conversationSvc),
+		conversationHandler:  handler.NewConversationHandler(svcs.conversationSvc, svcs.conversationSvc),
 	}
 }
 
@@ -131,10 +129,4 @@ func buildRouter(hs *handlers, repos *repositories, cfg *config.Config) *gin.Eng
 		BlacklistRepo:        repos.blacklistRepo,
 		JwtCfg:               &cfg.JWT,
 	})
-}
-
-// startRealtime 启动 Hub 主循环。
-func startRealtime(ctx context.Context, rt *realtimeComponents) error {
-	go rt.hub.Run(ctx)
-	return nil
 }
