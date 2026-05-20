@@ -32,7 +32,7 @@ type Client struct {
 func (c *Client) ReadPump(ctx context.Context) {
 	defer func() {
 		if c.Hub != nil {
-			c.Hub.EnqueueUnregister(c)
+			c.Hub.EnqueueUnregisterWithReason(c, CloseReasonClientReadStopped)
 		}
 		closeClientConn(c)
 	}()
@@ -82,7 +82,7 @@ func (c *Client) ReadPump(ctx context.Context) {
 				c.writeError(err)
 				continue
 			}
-			c.forwardAll(ctx, forwardMsgs)
+			c.Hub.EnqueueForwards(ctx, forwardMsgs)
 
 		case EventTypeMessageDelivered:
 			req, err := DecodeClientMessageDeliveredData(env.Data)
@@ -103,7 +103,7 @@ func (c *Client) ReadPump(ctx context.Context) {
 				c.writeError(err)
 				continue
 			}
-			c.forwardAll(ctx, forwardMsgs)
+			c.Hub.EnqueueForwards(ctx, forwardMsgs)
 
 		case EventTypeMessageRead:
 			req, err := DecodeClientMessageReadData(env.Data)
@@ -124,23 +124,12 @@ func (c *Client) ReadPump(ctx context.Context) {
 				c.writeError(err)
 				continue
 			}
-			c.forwardAll(ctx, forwardMsgs)
+			c.Hub.EnqueueForwards(ctx, forwardMsgs)
 
 		default:
 			err := apperr.MessageInvalidPayload()
 			logger.Warn("received unsupported ws event", "event_type", env.Type)
 			c.writeError(err)
-		}
-	}
-}
-
-func (c *Client) forwardAll(ctx context.Context, forwardMsgs []*ForwardMessage) {
-	for _, forwardMsg := range forwardMsgs {
-		select {
-		case c.Hub.Forward <- forwardMsg:
-		default:
-			c.Hub.MarkNeedsSync(forwardMsg.To, "", forwardMsg.ConversationID, SyncReasonForwardQueueFull)
-			logging.FromContext(ctx).With("target_user_id", forwardMsg.To).Warn("forward queue full, mark connection needs sync")
 		}
 	}
 }
@@ -185,9 +174,6 @@ func (c *Client) WritePump(ctx context.Context) {
 			}
 
 		case <-ticker.C:
-			if c.Lifecycle != nil {
-				c.Lifecycle.Refresh(ctx, c.UserID)
-			}
 			if err := c.writeMessage(websocket.PingMessage, []byte{}); err != nil {
 				logger.Info("write ping failed", "error", err)
 				return

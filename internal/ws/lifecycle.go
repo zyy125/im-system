@@ -15,12 +15,20 @@ type ClientLifecycle interface {
 	Disconnect(ctx context.Context, userID uint64)
 }
 
+type OfflineMessageLoader interface {
+	ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error)
+}
+
+type PresenceAudienceProvider interface {
+	ListFriendIDs(ctx context.Context, userID uint64) ([]uint64, error)
+}
+
 type clientLifecycle struct {
 	presenceRepo     repository.PresenceRepo
 	offlineLoader    OfflineMessageLoader
 	presenceAudience PresenceAudienceProvider
 	forward          chan<- *ForwardMessage
-	markSync         func(userID, conversationID uint64, reason string)
+	enqueueUserSync  func(userID, conversationID uint64, reason string)
 }
 
 func NewClientLifecycle(
@@ -28,14 +36,14 @@ func NewClientLifecycle(
 	offlineLoader OfflineMessageLoader,
 	presenceAudience PresenceAudienceProvider,
 	forward chan<- *ForwardMessage,
-	markSync func(userID, conversationID uint64, reason string),
+	enqueueUserSync func(userID, conversationID uint64, reason string),
 ) ClientLifecycle {
 	return &clientLifecycle{
 		presenceRepo:     presenceRepo,
 		offlineLoader:    offlineLoader,
 		presenceAudience: presenceAudience,
 		forward:          forward,
-		markSync:         markSync,
+		enqueueUserSync:  enqueueUserSync,
 	}
 }
 
@@ -131,8 +139,8 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 			Content: payload,
 		}:
 		default:
-			if l.markSync != nil {
-				l.markSync(friendID, 0, SyncReasonForwardQueueFull)
+			if l.enqueueUserSync != nil {
+				l.enqueueUserSync(friendID, 0, SyncReasonForwardQueueFull)
 			}
 			logging.FromContext(ctx).With("user_id", userID, "target_user_id", friendID).Warn("presence forward queue is full")
 		}

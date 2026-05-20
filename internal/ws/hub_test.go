@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zyy125/im-system/internal/logging"
 	"github.com/zyy125/im-system/internal/model"
 )
 
@@ -331,6 +332,58 @@ func TestHub_EnqueueUnregisterAfterShutdownDoesNotBlock(t *testing.T) {
 	case <-unregistered:
 	case <-time.After(2 * time.Second):
 		t.Fatal("enqueue unregister blocked after hub shutdown")
+	}
+}
+
+func TestHub_EnqueueForwardsDeliversBatch(t *testing.T) {
+	presenceRepo := newHubTestPresenceRepo()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	hub := NewHub(presenceRepo, nil, nil)
+	go func() {
+		defer close(done)
+		hub.Run(ctx)
+	}()
+
+	client := &Client{UserID: 21, Send: make(chan []byte, 4)}
+	hub.Register <- client
+	waitForUserID(t, presenceRepo.setOnline, 21)
+
+	hub.EnqueueForwards(context.Background(), []*ForwardMessage{
+		{To: 21, ConversationID: 1, Content: []byte("first")},
+		{To: 21, ConversationID: 1, Content: []byte("second")},
+	})
+
+	assert.Equal(t, "first", string(readHubPayload(t, client.Send)))
+	assert.Equal(t, "second", string(readHubPayload(t, client.Send)))
+
+	hub.EnqueueUnregister(client)
+	waitForUserID(t, presenceRepo.setOffline, 21)
+	cancel()
+	waitForHubDone(t, done)
+}
+
+func TestHub_EnqueueForwardsMarksSyncWhenForwardQueueFull(t *testing.T) {
+	hub := NewHub(nil, nil, nil)
+	hub.Forward = make(chan *ForwardMessage, 1)
+	hub.markSync = make(chan *syncRequest, 1)
+
+	ctx := logging.ContextWithLogger(context.Background(), logging.With("event_type", "test_enqueue_forwards"))
+	hub.Forward <- &ForwardMessage{To: 30, ConversationID: 1, Content: []byte("occupied")}
+
+	hub.EnqueueForwards(ctx, []*ForwardMessage{
+		{To: 30, ConversationID: 99, Content: []byte("overflow")},
+	})
+
+	select {
+	case req := <-hub.markSync:
+		require.NotNil(t, req)
+		assert.Equal(t, uint64(30), req.userID)
+		assert.Equal(t, uint64(99), req.conversationID)
+		assert.Equal(t, SyncReasonForwardQueueFull, req.reason)
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected markSync request when forward queue is full")
 	}
 }
 
