@@ -53,7 +53,7 @@
 }
 ```
 
-- 表示客户端在该会话内已经连续收到 `delivered_seq`。
+- 表示客户端已经确认收到该会话内的 `delivered_seq`。
 - 服务端单调推进 `conversation_members.last_acked_msg_seq`。
 - `delivered_seq` 不能超过当前会话 MySQL 已提交的最大 `seq`。
 
@@ -142,6 +142,24 @@
 - `error` 携带 `{code, message}`。
 - `presence.changed` 携带 `{user_id, online}`，只表示好友在线状态变化。
 
+### sync.required
+
+```json
+{
+  "type": "sync.required",
+  "version": 1,
+  "data": {
+    "conversation_id": 1,
+    "reason": "pending_queue_full",
+    "retryable": true
+  }
+}
+```
+
+- 当实时链路出现写队列溢出、bootstrap pending 溢出或内部转发拥塞时，服务端会下发该事件。
+- `conversation_id` 可能为空，表示当前连接需要做一次更宽泛的补齐检查。
+- 客户端收到后应尽快调用 `/api/v1/messages/sync` 补洞，然后继续接收后续实时消息。
+
 ## 4. 离线补推
 
 - 离线补推只读 MySQL 已提交消息。
@@ -152,7 +170,7 @@
 ## 5. 前端建议
 
 - 本地发送后先标记 `sending`，收到 `message.sent` 后标记 `sent`。
-- 收到 `message.created` 后按会话连续 `seq` 推进，并发送 `message.delivered`。
+- 收到 `message.created` 后按会话内单调递增的 `seq` 维护本地游标，并发送 `message.delivered`。
 - 只有用户实际读到消息时才发送 `message.read`。
 - 缺口补拉使用 `/api/v1/messages/sync?conversation_id=...&after_seq=...`。
 - 不使用 `id`、`send_time`、`msg_id` 作为范围游标。

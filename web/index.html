@@ -104,7 +104,6 @@
 
     <script>
         const API_BASE = '/api/v1';
-        const WS_PROTOCOL_VERSION = 1;
         const WS_EVENT_TYPE = {
             CHAT_SEND: 'chat.send',
             CHAT_MESSAGE: 'chat.message',
@@ -824,7 +823,6 @@
             console.log('正在发送:', msg);
             state.ws.send(JSON.stringify({
                 type: WS_EVENT_TYPE.CHAT_SEND,
-                version: WS_PROTOCOL_VERSION,
                 data: msg
             }));
 

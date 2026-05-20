@@ -26,8 +26,6 @@ type ConversationRepo interface {
 	ListActiveGroupsByUser(ctx context.Context, userID uint64) ([]model.Conversation, error)
 	// ListActiveMembers 查询某个会话下当前仍有效的成员。
 	ListActiveMembers(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error)
-	// ListActiveMembersByConversationIDs 批量查询多个会话下当前有效成员。
-	ListActiveMembersByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error)
 	// CountActiveMembers 统计某个会话当前活跃成员数。
 	CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error)
 	// GetMember 查询某个用户在指定会话中的成员记录。
@@ -36,6 +34,8 @@ type ConversationRepo interface {
 	UpsertMember(ctx context.Context, member *model.ConversationMember) error
 	// SetVisible 修改某个成员对会话的显示状态。
 	SetVisible(ctx context.Context, conversationID, userID uint64, visible bool) error
+	// SetVisibleForUsers 批量修改多个成员对会话的显示状态。
+	SetVisibleForUsers(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) error
 	// UpdateName 修改会话名称。
 	UpdateName(ctx context.Context, conversationID uint64, name string) error
 	// UpdateStatus 修改会话整体状态，例如解散。
@@ -199,26 +199,6 @@ func (r *conversationRepo) ListActiveMembers(ctx context.Context, conversationID
 	return members, nil
 }
 
-func (r *conversationRepo) ListActiveMembersByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error) {
-	result := make(map[uint64][]model.ConversationMember, len(conversationIDs))
-	if len(conversationIDs) == 0 {
-		return result, nil
-	}
-
-	var members []model.ConversationMember
-	if err := r.db.WithContext(ctx).
-		Where("conversation_id IN ? AND status = ?", conversationIDs, model.ConversationMemberStatusActive).
-		Order("conversation_id ASC, user_id ASC").
-		Find(&members).Error; err != nil {
-		return nil, err
-	}
-
-	for _, member := range members {
-		result[member.ConversationID] = append(result[member.ConversationID], member)
-	}
-	return result, nil
-}
-
 func (r *conversationRepo) CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error) {
 	if conversationID == 0 {
 		return 0, apperr.RequiredOne("conversation_id")
@@ -266,17 +246,37 @@ func (r *conversationRepo) SetVisible(ctx context.Context, conversationID, userI
 		return apperr.Required("conversation_id", "user_id")
 	}
 
-	result := r.db.WithContext(ctx).
-		Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
-		Update("visible", visible)
-	if result.Error != nil {
-		return result.Error
+	rowsAffected, err := r.setVisible(ctx, conversationID, []uint64{userID}, visible)
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected == 0 {
+	if rowsAffected == 0 {
 		return apperr.ConversationMemberNotFound()
 	}
 	return nil
+}
+
+func (r *conversationRepo) SetVisibleForUsers(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) error {
+	if conversationID == 0 {
+		return apperr.RequiredOne("conversation_id")
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	_, err := r.setVisible(ctx, conversationID, userIDs, visible)
+	return err
+}
+
+func (r *conversationRepo) setVisible(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id IN ?", conversationID, userIDs).
+		Update("visible", visible)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
 
 func (r *conversationRepo) UpdateName(ctx context.Context, conversationID uint64, name string) error {

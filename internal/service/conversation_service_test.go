@@ -291,7 +291,7 @@ func TestConversationService_CreateGroupAndListMembers(t *testing.T) {
 			updateLastReadFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
 				return nil
 			},
-			setVisibleFn: func(ctx context.Context, conversationID, userID uint64, visible bool) error {
+			setVisibleForUsersFn: func(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) error {
 				return nil
 			},
 			getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {

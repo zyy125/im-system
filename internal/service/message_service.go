@@ -20,7 +20,7 @@ type MessageService interface {
 	ListConversationHistory(ctx context.Context, userID, conversationID uint64, limit int, beforeSeq uint64) ([]model.Message, bool, error)
 	// SyncConversation 按 seq 补拉某个会话 after_seq 之后的消息。
 	SyncConversation(ctx context.Context, userID, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
-	// MarkDelivered 推进某个成员的最大连续接收游标，并返回需要接收回执的活跃成员。
+	// MarkDelivered 推进某个成员的最大已确认接收 seq，并返回需要接收回执的活跃成员。
 	MarkDelivered(ctx context.Context, userID, conversationID, deliveredSeq uint64) ([]uint64, error)
 }
 
@@ -140,9 +140,5 @@ func (s *messageService) listActiveMemberIDs(ctx context.Context, conversationID
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]uint64, 0, len(members))
-	for _, member := range members {
-		ids = append(ids, member.UserID)
-	}
-	return ids, nil
+	return memberUserIDs(members), nil
 }

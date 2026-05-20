@@ -41,9 +41,9 @@ const (
 type Conversation struct {
 	ID        uint64             `gorm:"primaryKey"`
 	Type      ConversationType   `gorm:"type:tinyint unsigned;not null;index;uniqueIndex:idx_conversation_type_single_key,priority:1"` // 1:单聊 2:群聊
-	Name      string             `gorm:"size:128;not null;default:''"` // 群名称（单聊可选）
-	Avatar    string             `gorm:"size:255;not null;default:''"`
-	OwnerID   uint64             `gorm:"index;not null;default:0"` // 群主 ID，单聊为 0
+	Name      string             `gorm:"size:128;not null;default:''"`                                                                 // 群名称（单聊可选）
+	Avatar    string             `gorm:"size:255;not null;default:''"`                                                                 //群头像，单聊为空
+	OwnerID   uint64             `gorm:"index;not null;default:0"`                                                                     // 群主 ID，单聊为 0
 	Status    ConversationStatus `gorm:"type:tinyint unsigned;not null;default:1;index"`
 	SingleKey *string            `gorm:"size:64;uniqueIndex:idx_conversation_type_single_key,priority:2"` // 仅单聊使用：min(a,b):max(a,b)，如 "1:3"；群聊为 NULL
 	CreatedAt time.Time          `json:"-"`
@@ -52,18 +52,18 @@ type Conversation struct {
 
 // ConversationMember 记录某个用户在某个会话中的状态和游标信息。
 type ConversationMember struct {
-	ID               uint64                   `gorm:"primaryKey"`
-	ConversationID   uint64                   `gorm:"uniqueIndex:idx_conversation_user;index;not null;index:idx_conversation_member_user_visible,priority:3"`
-	UserID           uint64                   `gorm:"uniqueIndex:idx_conversation_user;index;not null;index:idx_conversation_member_user_visible,priority:1"`
-	Role             ConversationMemberRole   `gorm:"type:tinyint unsigned;not null;default:3"` // 1:群主 2:管理员 3:普通成员
-	Status           ConversationMemberStatus `gorm:"type:tinyint unsigned;not null;default:1;index"`
-	Visible          bool                     `gorm:"not null;default:true;index:idx_conversation_member_user_visible,priority:2"` // false 时会话从列表隐藏，收到新消息后自动恢复
-	InvitedBy        uint64                   `gorm:"not null;default:0"` // 邀请人 ID，0 表示自己加入或创建
-	JoinedMsgSeq     uint64                   `gorm:"not null;default:0"` // 入群时的消息 seq，只能看到此 seq 之后的历史
-	LastAckedMsgSeq  uint64                   `gorm:"not null;default:0"` // 客户端已确认收到的最大连续 seq（ACK 游标）
-	LastReadMsgSeq   uint64                   `gorm:"not null;default:0"` // 用户已读的最大 seq（已读游标）
-	CreatedAt        time.Time                `json:"-"`
-	UpdatedAt        time.Time                `json:"-"`
+	ID              uint64                   `gorm:"primaryKey"`
+	ConversationID  uint64                   `gorm:"uniqueIndex:idx_conversation_user;index:idx_conversation_member_user_visible,priority:3;not null"`
+	UserID          uint64                   `gorm:"uniqueIndex:idx_conversation_user;index:idx_conversation_member_user_visible,priority:1;not null"`
+	Role            ConversationMemberRole   `gorm:"type:tinyint unsigned;not null;default:3"` // 1:群主 2:管理员 3:普通成员
+	Status          ConversationMemberStatus `gorm:"type:tinyint unsigned;not null;default:1;index"`
+	Visible         bool                     `gorm:"not null;default:true;index:idx_conversation_member_user_visible,priority:2"` // false 时会话从列表隐藏，收到新消息后自动恢复
+	InvitedBy       uint64                   `gorm:"not null;default:0"`                                                          // 邀请人 ID，0 表示自己加入或创建
+	JoinedMsgSeq    uint64                   `gorm:"not null;default:0"`                                                          // 入群时的消息 seq，只能看到此 seq 之后的历史
+	LastAckedMsgSeq uint64                   `gorm:"not null;default:0"`                                                          // 客户端已确认收到的最大 seq（允许中间存在空洞，ACK 游标仍单调推进）
+	LastReadMsgSeq  uint64                   `gorm:"not null;default:0"`                                                          // 用户已读的最大 seq（已读游标）
+	CreatedAt       time.Time                `json:"-"`
+	UpdatedAt       time.Time                `json:"-"`
 }
 
 func (c Conversation) IsSingle() bool {

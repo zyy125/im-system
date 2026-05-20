@@ -13,7 +13,9 @@ import (
 type authTestBlacklistRepo struct{}
 
 func (authTestBlacklistRepo) IsBlacklisted(context.Context, string) (bool, error) { return false, nil }
-func (authTestBlacklistRepo) Blacklist(context.Context, string) error             { return nil }
+func (authTestBlacklistRepo) Blacklist(context.Context, string, time.Duration) error {
+	return nil
+}
 
 func TestAuthenticateHTTPRequestRequiresBearerHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/me?token=abc", nil)
@@ -35,5 +37,8 @@ func TestAuthenticateWSRequestAllowsQueryToken(t *testing.T) {
 	}
 	if result.UserID != 1 {
 		t.Fatalf("expected user id 1, got %d", result.UserID)
+	}
+	if result.ExpiresAt.IsZero() {
+		t.Fatal("expected token expiry to be present")
 	}
 }

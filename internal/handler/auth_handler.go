@@ -76,7 +76,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure 500 {object} response.Response "内部服务器错误"
 // @Router /api/v1/auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
-	if err := h.authService.Logout(requestContext(c), c.GetString("jti")); err != nil {
+	if err := h.authService.Logout(requestContext(c), c.GetString("jti"), currentTokenExpiresAt(c)); err != nil {
 		respondError(c, err)
 		return
 	}

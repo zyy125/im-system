@@ -155,15 +155,14 @@ type stubConversationRepo struct {
 	listConversationsByUserFn func(ctx context.Context, userID uint64) ([]model.Conversation, error)
 	listActiveGroupsByUserFn  func(ctx context.Context, userID uint64) ([]model.Conversation, error)
 	listActiveMembersFn       func(ctx context.Context, conversationID uint64) ([]model.ConversationMember, error)
-	listActiveMembersByIDsFn  func(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error)
 	countActiveMembersFn      func(ctx context.Context, conversationID uint64) (int64, error)
 	getMemberFn               func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error)
 	upsertMemberFn            func(ctx context.Context, member *model.ConversationMember) error
 	setVisibleFn              func(ctx context.Context, conversationID, userID uint64, visible bool) error
+	setVisibleForUsersFn      func(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) error
 	updateNameFn              func(ctx context.Context, conversationID uint64, name string) error
 	updateStatusFn            func(ctx context.Context, conversationID uint64, status model.ConversationStatus) error
 	updateMemberStatusFn      func(ctx context.Context, conversationID, userID uint64, status model.ConversationMemberStatus, visible bool) error
-	updateAllMemberStatusFn   func(ctx context.Context, conversationID uint64, status model.ConversationMemberStatus, visible bool) error
 	updateLastAckedFn         func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	updateLastReadFn          func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 }
@@ -217,13 +216,6 @@ func (s *stubConversationRepo) ListActiveMembers(ctx context.Context, conversati
 	return []model.ConversationMember{}, nil
 }
 
-func (s *stubConversationRepo) ListActiveMembersByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64][]model.ConversationMember, error) {
-	if s.listActiveMembersByIDsFn != nil {
-		return s.listActiveMembersByIDsFn(ctx, conversationIDs)
-	}
-	return map[uint64][]model.ConversationMember{}, nil
-}
-
 func (s *stubConversationRepo) CountActiveMembers(ctx context.Context, conversationID uint64) (int64, error) {
 	if s.countActiveMembersFn != nil {
 		return s.countActiveMembersFn(ctx, conversationID)
@@ -252,6 +244,13 @@ func (s *stubConversationRepo) SetVisible(ctx context.Context, conversationID, u
 	return nil
 }
 
+func (s *stubConversationRepo) SetVisibleForUsers(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) error {
+	if s.setVisibleForUsersFn != nil {
+		return s.setVisibleForUsersFn(ctx, conversationID, userIDs, visible)
+	}
+	return nil
+}
+
 func (s *stubConversationRepo) UpdateName(ctx context.Context, conversationID uint64, name string) error {
 	if s.updateNameFn != nil {
 		return s.updateNameFn(ctx, conversationID, name)
@@ -274,9 +273,6 @@ func (s *stubConversationRepo) UpdateMemberStatus(ctx context.Context, conversat
 }
 
 func (s *stubConversationRepo) UpdateAllMemberStatus(ctx context.Context, conversationID uint64, status model.ConversationMemberStatus, visible bool) error {
-	if s.updateAllMemberStatusFn != nil {
-		return s.updateAllMemberStatusFn(ctx, conversationID, status, visible)
-	}
 	return nil
 }
 
@@ -300,11 +296,8 @@ type stubMessageRepo struct {
 	listConversationAfterSeqFn func(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
 	listConversationRangeFn    func(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error)
 	getLatestByConversationFn  func(ctx context.Context, conversationID uint64) (model.Message, error)
-	listLatestByIDsFn          func(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error)
 	getMaxSeqByConversationFn  func(ctx context.Context, conversationID uint64) (uint64, error)
-	listConversationIDsFn      func(ctx context.Context) ([]uint64, error)
 	countUnreadFn              func(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error)
-	countUnreadByIDsFn         func(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error)
 }
 
 func (s *stubMessageRepo) Create(ctx context.Context, msg *model.Message) error {
@@ -335,17 +328,7 @@ func (s *stubMessageRepo) ListConversationRangeAfterSeq(ctx context.Context, con
 	return []model.Message{}, false, nil
 }
 
-func (s *stubMessageRepo) GetLatestByConversation(ctx context.Context, conversationID uint64) (model.Message, error) {
-	if s.getLatestByConversationFn != nil {
-		return s.getLatestByConversationFn(ctx, conversationID)
-	}
-	return model.Message{}, nil
-}
-
 func (s *stubMessageRepo) ListLatestByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error) {
-	if s.listLatestByIDsFn != nil {
-		return s.listLatestByIDsFn(ctx, conversationIDs)
-	}
 	result := make(map[uint64]model.Message, len(conversationIDs))
 	for _, conversationID := range conversationIDs {
 		if s.getLatestByConversationFn == nil {
@@ -367,24 +350,7 @@ func (s *stubMessageRepo) GetMaxSeqByConversation(ctx context.Context, conversat
 	return 0, nil
 }
 
-func (s *stubMessageRepo) ListConversationIDs(ctx context.Context) ([]uint64, error) {
-	if s.listConversationIDsFn != nil {
-		return s.listConversationIDsFn(ctx)
-	}
-	return []uint64{}, nil
-}
-
-func (s *stubMessageRepo) CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {
-	if s.countUnreadFn != nil {
-		return s.countUnreadFn(ctx, conversationID, userID, afterSeq)
-	}
-	return 0, nil
-}
-
 func (s *stubMessageRepo) CountUnreadByConversationIDs(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error) {
-	if s.countUnreadByIDsFn != nil {
-		return s.countUnreadByIDsFn(ctx, userID, conversationIDs)
-	}
 	result := make(map[uint64]int64, len(conversationIDs))
 	for _, conversationID := range conversationIDs {
 		if s.countUnreadFn == nil {

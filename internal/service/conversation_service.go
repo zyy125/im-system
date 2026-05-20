@@ -605,44 +605,16 @@ func (s *conversationService) buildConversationSummary(ctx context.Context, user
 	if err != nil {
 		return ConversationSummary{}, err
 	}
-
-	item := ConversationSummary{
-		ID:   conversation.ID,
-		Type: conversation.Type,
-		Name: conversation.Name,
-	}
-
-	lastMsg, err := s.messageRepo.GetLatestByConversation(ctx, conversation.ID)
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return ConversationSummary{}, err
-		}
-	} else {
-		item.LastMessage = &lastMsg
-	}
-
-	afterSeq := member.LastReadMsgSeq
-	if member.JoinedMsgSeq > afterSeq {
-		afterSeq = member.JoinedMsgSeq
-	}
-	unreadCount, err := s.messageRepo.CountUnreadByConversation(ctx, conversation.ID, userID, afterSeq)
+	items, err := s.buildConversationSummaries(ctx, userID, []model.Conversation{conversation}, map[uint64]model.ConversationMember{
+		conversation.ID: member,
+	})
 	if err != nil {
 		return ConversationSummary{}, err
 	}
-	item.UnreadCount = unreadCount
-
-	if conversation.IsSingle() {
-		peer, err := s.buildSingleConversationPeer(ctx, userID, conversation)
-		if err != nil {
-			return ConversationSummary{}, err
-		}
-		item.Peer = peer
-		if item.Name == "" && peer != nil {
-			item.Name = peer.Username
-		}
+	if len(items) == 0 {
+		return ConversationSummary{}, apperr.ConversationNotAccessible()
 	}
-
-	return item, nil
+	return items[0], nil
 }
 
 func (s *conversationService) buildConversationSummaries(
@@ -737,34 +709,6 @@ func (s *conversationService) buildConversationSummaries(
 	return items, nil
 }
 
-func (s *conversationService) buildSingleConversationPeer(ctx context.Context, userID uint64, conversation model.Conversation) (*ConversationPeer, error) {
-	peerID, err := extractPeerID(conversation, userID)
-	if err != nil {
-		return nil, err
-	}
-	if peerID == 0 {
-		return nil, nil
-	}
-
-	user, err := s.userRepo.GetByID(ctx, peerID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, apperr.UserNotFound()
-		}
-		return nil, err
-	}
-	online, err := s.presenceRepo.IsOnline(ctx, peerID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConversationPeer{
-		ID:       peerID,
-		Username: user.Username,
-		Online:   online,
-	}, nil
-}
-
 func extractPeerID(conversation model.Conversation, userID uint64) (uint64, error) {
 	singleKey := conversation.SingleKeyValue()
 	if singleKey == "" {
@@ -847,7 +791,7 @@ func (s *conversationService) allocateMessageSeq(ctx context.Context, conversati
 }
 
 func (s *conversationService) listOfflineMessagesForMember(ctx context.Context, userID uint64, member model.ConversationMember) ([]model.Message, error) {
-	// 离线补推以“最后连续收到的位置”为起点，而不是仅看已读位置。
+	// 离线补推以“最后已确认收到的最大 seq”为起点，而不是仅看已读位置。
 	afterSeq := member.LastAckedMsgSeq
 	if member.JoinedMsgSeq > afterSeq {
 		afterSeq = member.JoinedMsgSeq
@@ -911,10 +855,9 @@ func (s *conversationService) appendSystemMessage(
 	if err != nil {
 		return model.Message{}, err
 	}
-	for _, member := range members {
-		if err := conversationRepo.SetVisible(ctx, conversationID, member.UserID, true); err != nil {
-			return model.Message{}, err
-		}
+	memberIDs := memberUserIDs(members)
+	if err := conversationRepo.SetVisibleForUsers(ctx, conversationID, memberIDs, true); err != nil {
+		return model.Message{}, err
 	}
 	if err := conversationRepo.UpdateLastAckedMsgSeq(ctx, conversationID, actorID, msg.Seq); err != nil && apperr.CodeOf(err) != apperr.CodeConversationMemberNotFound {
 		return model.Message{}, err
@@ -938,11 +881,7 @@ func (s *conversationService) listActiveMemberIDs(ctx context.Context, conversat
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]uint64, 0, len(members))
-	for _, member := range members {
-		ids = append(ids, member.UserID)
-	}
-	return ids, nil
+	return memberUserIDs(members), nil
 }
 
 func (s *conversationService) ensureUsersExist(ctx context.Context, userIDs []uint64) error {
@@ -976,6 +915,14 @@ func uniqueUserIDs(ids []uint64) []uint64 {
 		result = append(result, id)
 	}
 	return result
+}
+
+func memberUserIDs(members []model.ConversationMember) []uint64 {
+	ids := make([]uint64, 0, len(members))
+	for _, member := range members {
+		ids = append(ids, member.UserID)
+	}
+	return ids
 }
 
 func filterOutUserID(ids []uint64, userID uint64) []uint64 {

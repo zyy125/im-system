@@ -9,6 +9,7 @@ import (
 )
 
 type ClientLifecycle interface {
+	Connect(ctx context.Context, userID uint64)
 	Bootstrap(ctx context.Context, userID uint64) ([][]byte, error)
 	Refresh(ctx context.Context, userID uint64)
 	Disconnect(ctx context.Context, userID uint64)
@@ -19,6 +20,7 @@ type clientLifecycle struct {
 	offlineLoader    OfflineMessageLoader
 	presenceAudience PresenceAudienceProvider
 	forward          chan<- *ForwardMessage
+	markSync         func(userID, conversationID uint64, reason string)
 }
 
 func NewClientLifecycle(
@@ -26,16 +28,18 @@ func NewClientLifecycle(
 	offlineLoader OfflineMessageLoader,
 	presenceAudience PresenceAudienceProvider,
 	forward chan<- *ForwardMessage,
+	markSync func(userID, conversationID uint64, reason string),
 ) ClientLifecycle {
 	return &clientLifecycle{
 		presenceRepo:     presenceRepo,
 		offlineLoader:    offlineLoader,
 		presenceAudience: presenceAudience,
 		forward:          forward,
+		markSync:         markSync,
 	}
 }
 
-func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byte, error) {
+func (l *clientLifecycle) Connect(ctx context.Context, userID uint64) {
 	logger := logging.FromContext(ctx).With("user_id", userID)
 	if l.presenceRepo != nil {
 		if err := l.presenceRepo.SetOnline(ctx, userID); err != nil {
@@ -44,7 +48,10 @@ func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byt
 			l.broadcastPresence(ctx, userID, true)
 		}
 	}
+}
 
+func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byte, error) {
+	logger := logging.FromContext(ctx).With("user_id", userID)
 	msgs, err := l.loadOfflineMessages(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -124,6 +131,9 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 			Content: payload,
 		}:
 		default:
+			if l.markSync != nil {
+				l.markSync(friendID, 0, SyncReasonForwardQueueFull)
+			}
 			logging.FromContext(ctx).With("user_id", userID, "target_user_id", friendID).Warn("presence forward queue is full")
 		}
 	}

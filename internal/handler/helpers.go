@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zyy125/im-system/internal/apperr"
@@ -20,6 +21,15 @@ func requestContext(c *gin.Context) context.Context {
 
 func currentUserID(c *gin.Context) uint64 {
 	return c.GetUint64("userID")
+}
+
+func currentTokenExpiresAt(c *gin.Context) time.Time {
+	value, ok := c.Get("tokenExpiresAt")
+	if !ok {
+		return time.Time{}
+	}
+	expiresAt, _ := value.(time.Time)
+	return expiresAt
 }
 
 func respondOK(c *gin.Context, data any) {
@@ -105,7 +115,6 @@ func buildFriendRequestUserResp(user service.FriendRequestUser) dto.FriendReques
 		Online:   user.Online,
 	}
 }
-
 
 func buildConversationItemResp(conversation service.ConversationSummary) dto.ConversationItemResp {
 	item := dto.ConversationItemResp{

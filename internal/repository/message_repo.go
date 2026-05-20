@@ -20,16 +20,10 @@ type MessageRepo interface {
 	ListConversationAfterSeq(ctx context.Context, conversationID, afterSeq uint64, limit int) ([]model.Message, bool, error)
 	// ListConversationRangeAfterSeq 按 seq 正序读取 (afterSeq, untilSeq] 区间内的消息。
 	ListConversationRangeAfterSeq(ctx context.Context, conversationID, afterSeq, untilSeq uint64, limit int) ([]model.Message, bool, error)
-	// GetLatestByConversation 获取某个会话最新的一条消息。
-	GetLatestByConversation(ctx context.Context, conversationID uint64) (model.Message, error)
 	// ListLatestByConversationIDs 批量获取多个会话的最新一条消息。
 	ListLatestByConversationIDs(ctx context.Context, conversationIDs []uint64) (map[uint64]model.Message, error)
 	// GetMaxSeqByConversation 查询某个会话当前已持久化的最大 seq。
 	GetMaxSeqByConversation(ctx context.Context, conversationID uint64) (uint64, error)
-	// ListConversationIDs 返回当前存在消息的会话 ID 列表。
-	ListConversationIDs(ctx context.Context) ([]uint64, error)
-	// CountUnreadByConversation 统计某个成员在会话中的未读消息数。
-	CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error)
 	// CountUnreadByConversationIDs 批量统计某个成员在多个会话中的未读消息数。
 	CountUnreadByConversationIDs(ctx context.Context, userID uint64, conversationIDs []uint64) (map[uint64]int64, error)
 }
@@ -223,16 +217,6 @@ func (r *messageRepo) GetMaxSeqByConversation(ctx context.Context, conversationI
 		Where("conversation_id = ?", conversationID).
 		Scan(&row).Error
 	return row.MaxSeq, err
-}
-
-func (r *messageRepo) ListConversationIDs(ctx context.Context) ([]uint64, error) {
-	var ids []uint64
-	err := r.db.WithContext(ctx).
-		Model(&model.Message{}).
-		Distinct("conversation_id").
-		Order("conversation_id ASC").
-		Pluck("conversation_id", &ids).Error
-	return ids, err
 }
 
 func (r *messageRepo) CountUnreadByConversation(ctx context.Context, conversationID, userID, afterSeq uint64) (int64, error) {

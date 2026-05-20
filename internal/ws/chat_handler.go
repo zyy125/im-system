@@ -18,19 +18,19 @@ type MessageAckHandler interface {
 }
 
 type chatSendHandler struct {
-	messageSendService service.MessageCommandService
+	messageSendService service.MessageSendService
 }
 
 type messageAckHandler struct {
-	messageReceiptService   service.MessageReceiptService
-	conversationSyncService service.ConversationSyncService
+	messageReceiptService   service.MessageService
+	conversationSyncService service.ConversationService
 }
 
-func NewChatSendHandler(messageSendService service.MessageCommandService) ChatSendHandler {
+func NewChatSendHandler(messageSendService service.MessageSendService) ChatSendHandler {
 	return &chatSendHandler{messageSendService: messageSendService}
 }
 
-func NewMessageAckHandler(messageReceiptService service.MessageReceiptService, conversationSyncService service.ConversationSyncService) MessageAckHandler {
+func NewMessageAckHandler(messageReceiptService service.MessageService, conversationSyncService service.ConversationService) MessageAckHandler {
 	return &messageAckHandler{
 		messageReceiptService:   messageReceiptService,
 		conversationSyncService: conversationSyncService,
@@ -61,16 +61,18 @@ func (h *chatSendHandler) HandleMessageSend(ctx context.Context, senderID uint64
 
 	forwards := make([]*ForwardMessage, 0, len(recipients)+1)
 	forwards = append(forwards, &ForwardMessage{
-		To:      senderID,
-		Content: sentPayload,
+		To:             senderID,
+		ConversationID: saved.ConversationID,
+		Content:        sentPayload,
 	})
 	for _, recipientID := range recipients {
 		if recipientID == senderID {
 			continue
 		}
 		forwards = append(forwards, &ForwardMessage{
-			To:      recipientID,
-			Content: createdPayload,
+			To:             recipientID,
+			ConversationID: saved.ConversationID,
+			Content:        createdPayload,
 		})
 	}
 	return forwards, nil
@@ -95,7 +97,7 @@ func (h *messageAckHandler) HandleMessageDelivered(ctx context.Context, userID u
 	if err != nil {
 		return nil, err
 	}
-	return buildReceiptForwards(recipients, payload), nil
+	return buildReceiptForwards(req.ConversationID, recipients, payload), nil
 }
 
 func (h *messageAckHandler) HandleMessageRead(ctx context.Context, userID uint64, req ClientMessageRead) ([]*ForwardMessage, error) {
@@ -117,15 +119,16 @@ func (h *messageAckHandler) HandleMessageRead(ctx context.Context, userID uint64
 	if err != nil {
 		return nil, err
 	}
-	return buildReceiptForwards(recipients, payload), nil
+	return buildReceiptForwards(req.ConversationID, recipients, payload), nil
 }
 
-func buildReceiptForwards(recipients []uint64, payload []byte) []*ForwardMessage {
+func buildReceiptForwards(conversationID uint64, recipients []uint64, payload []byte) []*ForwardMessage {
 	forwards := make([]*ForwardMessage, 0, len(recipients))
 	for _, recipientID := range recipients {
 		forwards = append(forwards, &ForwardMessage{
-			To:      recipientID,
-			Content: payload,
+			To:             recipientID,
+			ConversationID: conversationID,
+			Content:        payload,
 		})
 	}
 	return forwards

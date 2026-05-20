@@ -84,17 +84,4 @@ func TestMessageRepo_QueryMethods(t *testing.T) {
 	latest, err := repo.GetLatestByConversation(ctx, 1)
 	assert.NoError(t, err)
 	assert.Equal(t, "m3", latest.MsgID)
-
-	assert.NoError(t, db.Create(&model.Message{
-		MsgID:          "m4",
-		ConversationID: 2,
-		Seq:            1,
-		From:           3,
-		SendTime:       4000,
-		Content:        "d",
-	}).Error)
-
-	conversationIDs, err := repo.ListConversationIDs(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, []uint64{1, 2}, conversationIDs)
 }

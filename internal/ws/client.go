@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -25,12 +26,15 @@ type Client struct {
 	ChatHandler  ChatSendHandler   `json:"-"`
 	AckHandler   MessageAckHandler `json:"-"`
 	Lifecycle    ClientLifecycle   `json:"-"`
+	closed       atomic.Bool
 }
 
 func (c *Client) ReadPump(ctx context.Context) {
 	defer func() {
-		c.Hub.Unregister <- c
-		c.Conn.Close()
+		if c.Hub != nil {
+			c.Hub.EnqueueUnregister(c)
+		}
+		closeClientConn(c)
 	}()
 
 	logger := logging.FromContext(ctx)
@@ -135,7 +139,7 @@ func (c *Client) forwardAll(ctx context.Context, forwardMsgs []*ForwardMessage) 
 		select {
 		case c.Hub.Forward <- forwardMsg:
 		default:
-			c.Hub.MarkNeedsSync(forwardMsg.To)
+			c.Hub.MarkNeedsSync(forwardMsg.To, "", forwardMsg.ConversationID, SyncReasonForwardQueueFull)
 			logging.FromContext(ctx).With("target_user_id", forwardMsg.To).Warn("forward queue full, mark connection needs sync")
 		}
 	}
@@ -151,9 +155,7 @@ func (c *Client) writeError(err error) {
 		logging.With("user_id", c.UserID, "connection_id", c.ConnectionID).Error("marshal error payload failed", "error", marshalErr)
 		return
 	}
-	select {
-	case c.Send <- payload:
-	default:
+	if !c.enqueuePayload(payload) {
 		logging.With("user_id", c.UserID, "connection_id", c.ConnectionID).Warn("error payload dropped: send queue full")
 	}
 }
@@ -202,4 +204,23 @@ func (c *Client) writeMessage(messageType int, payload []byte) error {
 		return err
 	}
 	return c.Conn.WriteMessage(messageType, payload)
+}
+
+func (c *Client) enqueuePayload(payload []byte) (ok bool) {
+	if c == nil || c.Send == nil || c.closed.Load() {
+		return false
+	}
+
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+
+	select {
+	case c.Send <- payload:
+		return true
+	default:
+		return false
+	}
 }

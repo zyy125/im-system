@@ -42,9 +42,9 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 						{ConversationID: conversationID, UserID: 10, Status: model.ConversationMemberStatusActive},
 					}, nil
 				},
-				setVisibleFn: func(ctx context.Context, conversationID, userID uint64, visible bool) error {
+				setVisibleForUsersFn: func(ctx context.Context, conversationID uint64, userIDs []uint64, visible bool) error {
 					if visible {
-						visibleUsers = append(visibleUsers, userID)
+						visibleUsers = append(visibleUsers, userIDs...)
 					}
 					return nil
 				},

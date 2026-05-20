@@ -2,13 +2,15 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type TokenBlacklistRepo interface {
 	IsBlacklisted(ctx context.Context, jti string) (bool, error)
-	Blacklist(ctx context.Context, jti string) error
+	Blacklist(ctx context.Context, jti string, ttl time.Duration) error
 }
 
 var _ TokenBlacklistRepo = (*tokenBlacklistRepo)(nil)
@@ -23,8 +25,23 @@ func NewTokenBlacklistRepo(rdb *redis.Client) *tokenBlacklistRepo {
 }
 
 func (r *tokenBlacklistRepo) IsBlacklisted(ctx context.Context, jti string) (bool, error) {
-	return r.Rdb.SIsMember(ctx, "jwt:blacklist", jti).Result()
+	if jti == "" {
+		return false, nil
+	}
+	count, err := r.Rdb.Exists(ctx, blacklistKey(jti)).Result()
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
-func (r *tokenBlacklistRepo) Blacklist(ctx context.Context, jti string) error {
-	return r.Rdb.SAdd(ctx, "jwt:blacklist", jti).Err()
+
+func (r *tokenBlacklistRepo) Blacklist(ctx context.Context, jti string, ttl time.Duration) error {
+	if jti == "" || ttl <= 0 {
+		return nil
+	}
+	return r.Rdb.Set(ctx, blacklistKey(jti), "1", ttl).Err()
+}
+
+func blacklistKey(jti string) string {
+	return fmt.Sprintf("jwt:blacklist:%s", jti)
 }

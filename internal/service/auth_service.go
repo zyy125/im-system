@@ -25,7 +25,7 @@ type authService struct {
 type AuthService interface {
 	Register(ctx context.Context, username, password string) error
 	Login(ctx context.Context, username, password string) (string, error)
-	Logout(ctx context.Context, jti string) error
+	Logout(ctx context.Context, jti string, expiresAt time.Time) error
 }
 
 var _ AuthService = (*authService)(nil)
@@ -81,6 +81,14 @@ func (s *authService) Login(ctx context.Context, username, password string) (str
 	return token, nil
 }
 
-func (s *authService) Logout(ctx context.Context, jti string) error {
-	return s.tokenBlacklistRepo.Blacklist(ctx, jti)
+func (s *authService) Logout(ctx context.Context, jti string, expiresAt time.Time) error {
+	if strings.TrimSpace(jti) == "" {
+		return apperr.TokenInvalid()
+	}
+
+	ttl := time.Until(expiresAt)
+	if expiresAt.IsZero() || ttl <= 0 {
+		return nil
+	}
+	return s.tokenBlacklistRepo.Blacklist(ctx, jti, ttl)
 }

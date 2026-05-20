@@ -113,7 +113,7 @@ func initHandlers(cfg *config.Config, repos *repositories, rt *realtimeComponent
 		friendHandler:        handler.NewFriendHandler(svcs.friendSvc),
 		friendRequestHandler: handler.NewFriendRequestHandler(svcs.friendRequestSvc),
 		messageHandler:       handler.NewMessageHandler(svcs.messageSvc, svcs.conversationSvc),
-		conversationHandler:  handler.NewConversationHandler(svcs.conversationSvc, svcs.conversationSvc),
+		conversationHandler:  handler.NewConversationHandler(svcs.conversationSvc),
 	}
 }
 

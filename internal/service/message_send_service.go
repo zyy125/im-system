@@ -82,12 +82,9 @@ func (s *messageSendService) SendTextMessage(ctx context.Context, senderID, conv
 			return err
 		}
 
-		recipients = recipients[:0]
-		for _, current := range members {
-			recipients = append(recipients, current.UserID)
-			if err := conversationRepo.SetVisible(ctx, conversationID, current.UserID, true); err != nil {
-				return err
-			}
+		recipients = memberUserIDs(members)
+		if err := conversationRepo.SetVisibleForUsers(ctx, conversationID, recipients, true); err != nil {
+			return err
 		}
 		if err := conversationRepo.UpdateLastAckedMsgSeq(ctx, conversationID, senderID, msg.Seq); err != nil && apperr.CodeOf(err) != apperr.CodeConversationMemberNotFound {
 			return err

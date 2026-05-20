@@ -81,7 +81,13 @@ func (a *App) Shutdown(ctx context.Context) error {
 			a.hubCancel()
 		}
 		if a.Hub != nil {
-			a.Hub.CloseAll()
+			select {
+			case <-a.Hub.Done():
+			case <-ctx.Done():
+				if shutdownErr == nil {
+					shutdownErr = ctx.Err()
+				}
+			}
 		}
 		if a.Server != nil {
 			if err := a.Server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -20,9 +20,9 @@ import (
 
 type WSHandler struct {
 	hub                     *ws.Hub
-	messageSendService      service.MessageCommandService
-	messageReceiptService   service.MessageReceiptService
-	conversationSyncService service.ConversationSyncService
+	messageSendService      service.MessageSendService
+	messageReceiptService   service.MessageService
+	conversationSyncService service.ConversationService
 	jwtSecret               string
 	tokenBlacklistRepo      repository.TokenBlacklistRepo
 	allowedOrigins          []string
@@ -31,9 +31,9 @@ type WSHandler struct {
 
 func NewWSHandler(
 	hub *ws.Hub,
-	messageSendService service.MessageCommandService,
-	messageReceiptService service.MessageReceiptService,
-	conversationSyncService service.ConversationSyncService,
+	messageSendService service.MessageSendService,
+	messageReceiptService service.MessageService,
+	conversationSyncService service.ConversationService,
 	jwtSecret string,
 	tokenBlacklistRepo repository.TokenBlacklistRepo,
 	wsCfg config.WS,

@@ -259,11 +259,11 @@
 4. 服务端补齐：
 	   - `from`
 	   - `send_time`（统一由服务端生成）
-	5. 服务端调用 `MessageSendService.SendTextMessage`，在一个事务里完成：
+5. 服务端调用 `MessageSendService.SendTextMessage`，在一个事务里完成：
 	   - `MessageRepo.Create` 落库
 	   - `ListActiveMembers` 找到该会话当前应接收消息的成员
 	   - 推进发送方自己的 `last_acked_msg_seq` 和 `last_read_msg_seq`
-	   - `SetVisible(..., true)` 恢复活跃成员会话可见状态
+	   - 批量恢复活跃成员会话可见状态
 6. 持久化成功后，服务端向发送方推送 `message.sent`，向其他在线活跃成员推送 `message.created`。
 
 ### 6.4 持久化与会话状态更新
@@ -277,7 +277,7 @@
 	   - 调用 `MessageRepo.Create` 落库
 	   - 查询会话全部活跃成员
 	   - 推进发送方自己的送达和已读游标
-	   - 调用 `SetVisible(..., true)`，确保当前活跃成员会话重新显示
+	   - 批量恢复当前活跃成员会话可见状态
 
 这一步完成后，群聊和单聊都以同一条已提交消息作为事实来源；接收方送达和已读由后续 `message.delivered` / `message.read` 推进。
 
@@ -286,13 +286,16 @@
 `Hub` 收到 `ForwardMessage` 后，会向目标用户推送对应 envelope：
 
 - 如果目标用户当前在线且已经 ready：
-  - 直接把消息写入对方连接的 `Send` 通道
-- 如果目标用户已经连接但还没完成 bootstrap：
-  - 先放入 `PendingMessages`
-  - 等 bootstrap 完成后再补发
+  - 直接把消息广播给该用户当前全部 ready 连接
+- 如果目标用户某条连接已经建立但还没完成 bootstrap：
+  - 先放入该连接自己的 pending 队列
+  - 等该连接 bootstrap 完成后再补发
 - 如果目标用户不在线：
   - `Hub` 不会把这条消息长期缓存在内存中
   - 后续依赖数据库中的已持久化消息 + 离线补推链路给对方补消息
+- 如果实时队列或 pending 队列溢出：
+  - 服务端向受影响连接下发 `sync.required`
+  - 客户端改用 `sync` 接口补齐缺口
 
 ### 6.6 当前实现的关键语义
 
@@ -403,13 +406,13 @@
 6. `Hub` 收到 `ClientBootstrapped` 事件后：
    - 先把离线消息刷给客户端
    - 再把 bootstrap 期间积压的 pending 消息刷给客户端
-   - 最后把该用户标记为 `ready`
+   - 最后把该连接标记为 `ready`
 
 ### 8.3 数据依赖
 
 离线补推依赖两个核心值：
 
-- `last_acked_msg_seq`：客户端已连续收到的最大 `seq`
+- `last_acked_msg_seq`：客户端已确认收到的最大 `seq`
 - `joined_msg_seq`：成员可见历史的起点
 
 离线消息补推区间是：`max(joined_msg_seq, last_acked_msg_seq) < seq <= current_max_seq`。
@@ -471,7 +474,7 @@
 
 当前实现使用会话内 `seq` 作为已读/送达游标，原因是：
 
-- `seq` 在会话内严格递增
+- `seq` 在会话内单调递增，但允许在事务失败等恢复场景下出现空洞
 - 易于做区间查询
 - 可以和 history、sync、离线补推共用同一套语义
 

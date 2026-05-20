@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zyy125/im-system/internal/apperr"
@@ -14,8 +15,9 @@ import (
 )
 
 type AuthResult struct {
-	UserID uint64
-	JTI    string
+	UserID    uint64
+	JTI       string
+	ExpiresAt time.Time
 }
 
 func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistRepo) gin.HandlerFunc {
@@ -28,6 +30,7 @@ func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistR
 
 		c.Set("userID", result.UserID)
 		c.Set("jti", result.JTI)
+		c.Set("tokenExpiresAt", result.ExpiresAt)
 		c.Next()
 	}
 }
@@ -59,6 +62,9 @@ func authenticateToken(ctx context.Context, token, secret string, tokenBlacklist
 	if claims.ID == "" {
 		return AuthResult{}, apperr.TokenInvalid()
 	}
+	if claims.ExpiresAt == nil {
+		return AuthResult{}, apperr.TokenInvalid()
+	}
 
 	blacklisted, err := tokenBlacklistRepo.IsBlacklisted(ctx, claims.ID)
 	if err != nil {
@@ -74,8 +80,9 @@ func authenticateToken(ctx context.Context, token, secret string, tokenBlacklist
 	}
 
 	return AuthResult{
-		UserID: uid,
-		JTI:    claims.ID,
+		UserID:    uid,
+		JTI:       claims.ID,
+		ExpiresAt: claims.ExpiresAt.Time,
 	}, nil
 }
 

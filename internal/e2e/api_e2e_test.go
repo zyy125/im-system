@@ -99,7 +99,10 @@ func (r *inMemoryTokenBlacklistRepo) IsBlacklisted(_ context.Context, jti string
 	return ok, nil
 }
 
-func (r *inMemoryTokenBlacklistRepo) Blacklist(_ context.Context, jti string) error {
+func (r *inMemoryTokenBlacklistRepo) Blacklist(_ context.Context, jti string, ttl time.Duration) error {
+	if ttl <= 0 {
+		return nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.blocked[jti] = struct{}{}
@@ -172,7 +175,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		FriendHandler:        handler.NewFriendHandler(friendSvc),
 		FriendRequestHandler: handler.NewFriendRequestHandler(service.NewFriendRequestService(friendRequestRepo, friendSvc, userRepo, presenceRepo)),
 		MessageHandler:       handler.NewMessageHandler(messageSvc, conversationSvc),
-		ConversationHandler:  handler.NewConversationHandler(conversationSvc, conversationSvc),
+		ConversationHandler:  handler.NewConversationHandler(conversationSvc),
 		BlacklistRepo:        blacklistRepo,
 		JwtCfg:               &cfg.JWT,
 	})
@@ -280,8 +283,7 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 
 	msgID := "msg-e2e-1"
 	require.NoError(t, aliceConn.WriteJSON(map[string]any{
-		"type":    ws.EventTypeMessageSend,
-		"version": ws.ProtocolVersion,
+		"type": ws.EventTypeMessageSend,
 		"data": map[string]any{
 			"msg_id":          msgID,
 			"conversation_id": openBody.Conversation.ID,
@@ -299,8 +301,7 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 	assert.Equal(t, sent.Seq, delivered.Seq)
 
 	require.NoError(t, bobConn.WriteJSON(map[string]any{
-		"type":    ws.EventTypeMessageDelivered,
-		"version": ws.ProtocolVersion,
+		"type": ws.EventTypeMessageDelivered,
 		"data": map[string]any{
 			"conversation_id": openBody.Conversation.ID,
 			"delivered_seq":   delivered.Seq,
@@ -358,8 +359,7 @@ func TestGolden_CreateGroupAndSendGroupMessage(t *testing.T) {
 
 	msgID := "msg-group-1"
 	require.NoError(t, aliceConn.WriteJSON(map[string]any{
-		"type":    ws.EventTypeMessageSend,
-		"version": ws.ProtocolVersion,
+		"type": ws.EventTypeMessageSend,
 		"data": map[string]any{
 			"msg_id":          msgID,
 			"conversation_id": createBody.Conversation.ID,

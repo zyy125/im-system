@@ -10,13 +10,13 @@ import (
 )
 
 type MessageHandler struct {
-	messageQueryService     service.MessageQueryService
-	conversationSyncService service.ConversationSyncService
+	messageQueryService     service.MessageService
+	conversationSyncService service.ConversationService
 }
 
 func NewMessageHandler(
-	messageQueryService service.MessageQueryService,
-	conversationSyncService service.ConversationSyncService,
+	messageQueryService service.MessageService,
+	conversationSyncService service.ConversationService,
 ) *MessageHandler {
 	return &MessageHandler{
 		messageQueryService:     messageQueryService,

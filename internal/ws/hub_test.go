@@ -100,19 +100,11 @@ func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 		hub.Run(ctx)
 	}()
 
-	client := &Client{
-		UserID: 1,
-		Send:   make(chan []byte, 8),
-	}
+	client := &Client{UserID: 1, Send: make(chan []byte, 8)}
 	hub.Register <- client
-
 	waitForUserID(t, presenceRepo.setOnline, 1)
 
-	hub.Forward <- &ForwardMessage{
-		To:      1,
-		Content: []byte("live-1"),
-	}
-
+	hub.Forward <- &ForwardMessage{To: 1, ConversationID: 10, Content: []byte("live-1")}
 	close(loaderGate)
 
 	first := readHubPayload(t, client.Send)
@@ -121,29 +113,18 @@ func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 
 	firstMsg := decodeMessage(t, first)
 	secondMsg := decodeMessage(t, second)
-
 	assert.Equal(t, "off-1", firstMsg.MsgID)
 	assert.Equal(t, "off-2", secondMsg.MsgID)
 	assert.Equal(t, "live-1", string(third))
 
-	hub.Unregister <- client
+	hub.EnqueueUnregister(client)
 	waitForUserID(t, presenceRepo.setOffline, 1)
 	cancel()
 	waitForHubDone(t, done)
 }
 
-func TestHub_PresenceQueuedUntilFriendReadyAndBroadcastsOfflineOnUnregister(t *testing.T) {
+func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
-	friendReadyGate := make(chan struct{})
-	loader := &hubTestOfflineLoader{
-		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
-			if userID != 2 {
-				return []model.Message{}, nil
-			}
-			<-friendReadyGate
-			return []model.Message{}, nil
-		},
-	}
 	audience := &hubTestAudience{
 		listFn: func(ctx context.Context, userID uint64) ([]uint64, error) {
 			switch userID {
@@ -159,7 +140,7 @@ func TestHub_PresenceQueuedUntilFriendReadyAndBroadcastsOfflineOnUnregister(t *t
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	hub := NewHub(presenceRepo, loader, audience)
+	hub := NewHub(presenceRepo, nil, audience)
 	go func() {
 		defer close(done)
 		hub.Run(ctx)
@@ -169,32 +150,36 @@ func TestHub_PresenceQueuedUntilFriendReadyAndBroadcastsOfflineOnUnregister(t *t
 	hub.Register <- friend
 	waitForUserID(t, presenceRepo.setOnline, 2)
 
-	user := &Client{UserID: 1, Send: make(chan []byte, 8)}
-	hub.Register <- user
+	first := &Client{UserID: 1, Send: make(chan []byte, 8)}
+	second := &Client{UserID: 1, Send: make(chan []byte, 8)}
+	hub.Register <- first
 	waitForUserID(t, presenceRepo.setOnline, 1)
-
-	close(friendReadyGate)
+	hub.Register <- second
 
 	onlineEvent := decodePresenceEvent(t, readHubPayload(t, friend.Send))
 	assert.Equal(t, EventTypePresenceChanged, onlineEvent.Type)
 	assert.Equal(t, uint64(1), onlineEvent.UserID)
 	assert.True(t, onlineEvent.Online)
 
-	hub.Unregister <- user
-	waitForUserID(t, presenceRepo.setOffline, 1)
+	assertNoUserID(t, presenceRepo.setOnline)
 
+	hub.EnqueueUnregister(first)
+	assertNoUserID(t, presenceRepo.setOffline)
+
+	hub.EnqueueUnregister(second)
+	waitForUserID(t, presenceRepo.setOffline, 1)
 	offlineEvent := decodePresenceEvent(t, readHubPayload(t, friend.Send))
 	assert.Equal(t, EventTypePresenceChanged, offlineEvent.Type)
 	assert.Equal(t, uint64(1), offlineEvent.UserID)
 	assert.False(t, offlineEvent.Online)
 
-	hub.Unregister <- friend
+	hub.EnqueueUnregister(friend)
 	waitForUserID(t, presenceRepo.setOffline, 2)
 	cancel()
 	waitForHubDone(t, done)
 }
 
-func TestHub_StaleUnregisterDoesNotRemoveCurrentClient(t *testing.T) {
+func TestHub_MultipleConnectionsReceiveBroadcast(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -205,30 +190,120 @@ func TestHub_StaleUnregisterDoesNotRemoveCurrentClient(t *testing.T) {
 		hub.Run(ctx)
 	}()
 
-	oldClient := &Client{UserID: 7, Send: make(chan []byte, 4)}
-	hub.Register <- oldClient
+	first := &Client{UserID: 7, Send: make(chan []byte, 4)}
+	second := &Client{UserID: 7, Send: make(chan []byte, 4)}
+	hub.Register <- first
 	waitForUserID(t, presenceRepo.setOnline, 7)
+	hub.Register <- second
+	time.Sleep(50 * time.Millisecond)
 
-	newClient := &Client{UserID: 7, Send: make(chan []byte, 4)}
-	hub.Register <- newClient
-	waitForUserID(t, presenceRepo.setOnline, 7)
+	hub.Forward <- &ForwardMessage{To: 7, ConversationID: 20, Content: []byte("after-reconnect")}
+	assert.Equal(t, "after-reconnect", string(readHubPayload(t, first.Send)))
+	assert.Equal(t, "after-reconnect", string(readHubPayload(t, second.Send)))
 
-	hub.Unregister <- oldClient
-
-	hub.Forward <- &ForwardMessage{
-		To:      7,
-		Content: []byte("after-reconnect"),
-	}
-
-	assert.Equal(t, "after-reconnect", string(readHubPayload(t, newClient.Send)))
-
-	hub.Unregister <- newClient
+	hub.EnqueueUnregister(first)
+	hub.EnqueueUnregister(second)
 	waitForUserID(t, presenceRepo.setOffline, 7)
 	cancel()
 	waitForHubDone(t, done)
 }
 
-func TestHub_ForwardToOfflineUserIsDropped(t *testing.T) {
+func TestHub_UnreadyConnectionDoesNotBlockReadySiblingConnection(t *testing.T) {
+	presenceRepo := newHubTestPresenceRepo()
+	var callCount int
+	loaderGate := make(chan struct{})
+	loader := &hubTestOfflineLoader{
+		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
+			callCount++
+			if userID == 9 && callCount == 1 {
+				<-loaderGate
+			}
+			return []model.Message{}, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	hub := NewHub(presenceRepo, loader, nil)
+	go func() {
+		defer close(done)
+		hub.Run(ctx)
+	}()
+
+	slow := &Client{UserID: 9, Send: make(chan []byte, 4)}
+	fast := &Client{UserID: 9, Send: make(chan []byte, 4)}
+	hub.Register <- slow
+	waitForUserID(t, presenceRepo.setOnline, 9)
+	hub.Register <- fast
+	time.Sleep(50 * time.Millisecond)
+
+	hub.Forward <- &ForwardMessage{To: 9, ConversationID: 33, Content: []byte("live-ready")}
+	assert.Equal(t, "live-ready", string(readHubPayload(t, fast.Send)))
+
+	close(loaderGate)
+	assert.Equal(t, "live-ready", string(readHubPayload(t, slow.Send)))
+
+	hub.EnqueueUnregister(slow)
+	assertNoUserID(t, presenceRepo.setOffline)
+	hub.EnqueueUnregister(fast)
+	waitForUserID(t, presenceRepo.setOffline, 9)
+	cancel()
+	waitForHubDone(t, done)
+}
+
+func TestHub_PendingOverflowSendsSyncRequiredAfterBootstrap(t *testing.T) {
+	presenceRepo := newHubTestPresenceRepo()
+	loaderGate := make(chan struct{})
+	loader := &hubTestOfflineLoader{
+		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
+			if userID == 11 {
+				<-loaderGate
+			}
+			return []model.Message{}, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	hub := NewHub(presenceRepo, loader, nil)
+	go func() {
+		defer close(done)
+		hub.Run(ctx)
+	}()
+
+	client := &Client{UserID: 11, Send: make(chan []byte, maxPendingPerConnection+4)}
+	hub.Register <- client
+	waitForUserID(t, presenceRepo.setOnline, 11)
+
+	for i := 0; i < maxPendingPerConnection+1; i++ {
+		hub.Forward <- &ForwardMessage{To: 11, ConversationID: 88, Content: []byte("queued")}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	close(loaderGate)
+	var syncEvent SyncRequiredData
+	foundSyncRequired := false
+	for i := 0; i < maxPendingPerConnection+1; i++ {
+		payload := readHubPayload(t, client.Send)
+		if string(payload) == "queued" {
+			continue
+		}
+		syncEvent = decodeSyncRequiredEvent(t, payload)
+		foundSyncRequired = true
+		break
+	}
+
+	require.True(t, foundSyncRequired, "expected sync_required payload after pending overflow")
+	assert.Equal(t, uint64(88), syncEvent.ConversationID)
+	assert.Equal(t, SyncReasonPendingQueueFull, syncEvent.Reason)
+
+	hub.EnqueueUnregister(client)
+	waitForUserID(t, presenceRepo.setOffline, 11)
+	cancel()
+	waitForHubDone(t, done)
+}
+
+func TestHub_EnqueueUnregisterAfterShutdownDoesNotBlock(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -239,26 +314,24 @@ func TestHub_ForwardToOfflineUserIsDropped(t *testing.T) {
 		hub.Run(ctx)
 	}()
 
-	hub.Forward <- &ForwardMessage{
-		To:      99,
-		Content: []byte("dropped"),
-	}
-	time.Sleep(100 * time.Millisecond)
-
-	client := &Client{UserID: 99, Send: make(chan []byte, 4)}
+	client := &Client{UserID: 15, Send: make(chan []byte, 4)}
 	hub.Register <- client
-	waitForUserID(t, presenceRepo.setOnline, 99)
+	waitForUserID(t, presenceRepo.setOnline, 15)
 
-	select {
-	case payload := <-client.Send:
-		t.Fatalf("expected no replayed payload for offline user, got %q", string(payload))
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	hub.Unregister <- client
-	waitForUserID(t, presenceRepo.setOffline, 99)
 	cancel()
 	waitForHubDone(t, done)
+
+	unregistered := make(chan struct{})
+	go func() {
+		hub.EnqueueUnregister(client)
+		close(unregistered)
+	}()
+
+	select {
+	case <-unregistered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("enqueue unregister blocked after hub shutdown")
+	}
 }
 
 func waitForUserID(t *testing.T, ch <-chan uint64, want uint64) {
@@ -269,6 +342,16 @@ func waitForUserID(t *testing.T, ch <-chan uint64, want uint64) {
 		require.Equal(t, want, got)
 	case <-time.After(2 * time.Second):
 		t.Fatalf("timed out waiting for user id %d", want)
+	}
+}
+
+func assertNoUserID(t *testing.T, ch <-chan uint64) {
+	t.Helper()
+
+	select {
+	case got := <-ch:
+		t.Fatalf("expected no user id event, got %d", got)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -300,7 +383,6 @@ func decodeMessage(t *testing.T, payload []byte) model.Message {
 	var env Envelope
 	require.NoError(t, json.Unmarshal(payload, &env))
 	require.Equal(t, EventTypeMessageCreated, env.Type)
-	require.Equal(t, ProtocolVersion, env.Version)
 
 	var msg model.Message
 	require.NoError(t, json.Unmarshal(env.Data, &msg))
@@ -308,10 +390,9 @@ func decodeMessage(t *testing.T, payload []byte) model.Message {
 }
 
 type decodedPresenceEvent struct {
-	Type    string
-	Version int
-	UserID  uint64
-	Online  bool
+	Type   string
+	UserID uint64
+	Online bool
 }
 
 func decodePresenceEvent(t *testing.T, payload []byte) decodedPresenceEvent {
@@ -323,9 +404,20 @@ func decodePresenceEvent(t *testing.T, payload []byte) decodedPresenceEvent {
 	var data PresenceChangedData
 	require.NoError(t, json.Unmarshal(env.Data, &data))
 	return decodedPresenceEvent{
-		Type:    env.Type,
-		Version: env.Version,
-		UserID:  data.UserID,
-		Online:  data.Online,
+		Type:   env.Type,
+		UserID: data.UserID,
+		Online: data.Online,
 	}
+}
+
+func decodeSyncRequiredEvent(t *testing.T, payload []byte) SyncRequiredData {
+	t.Helper()
+
+	var env Envelope
+	require.NoError(t, json.Unmarshal(payload, &env))
+	require.Equal(t, EventTypeSyncRequired, env.Type)
+
+	var data SyncRequiredData
+	require.NoError(t, json.Unmarshal(env.Data, &data))
+	return data
 }

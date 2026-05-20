@@ -7,18 +7,14 @@ import (
 	"github.com/zyy125/im-system/internal/model"
 )
 
-const ProtocolVersion = 1
-
 type Envelope struct {
-	Type    string          `json:"type"`
-	Version int             `json:"version"`
-	Data    json.RawMessage `json:"data"`
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
 }
 
 type outboundEnvelope struct {
-	Type    string `json:"type"`
-	Version int    `json:"version"`
-	Data    any    `json:"data"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
 
 type ClientMessageSend struct {
@@ -50,6 +46,11 @@ type ServerMessage struct {
 	Extra          json.RawMessage    `json:"extra,omitempty"`
 }
 
+type SyncRequiredData struct {
+	ConversationID uint64 `json:"conversation_id,omitempty"`
+	Reason         string `json:"reason"`
+}
+
 type MessageDeliveredData struct {
 	ConversationID uint64 `json:"conversation_id"`
 	UserID         uint64 `json:"user_id"`
@@ -74,9 +75,8 @@ type PresenceChangedData struct {
 
 func MarshalEnvelope(eventType string, data any) ([]byte, error) {
 	return json.Marshal(outboundEnvelope{
-		Type:    eventType,
-		Version: ProtocolVersion,
-		Data:    data,
+		Type: eventType,
+		Data: data,
 	})
 }
 
@@ -89,17 +89,6 @@ func DecodeEnvelope(payload []byte) (Envelope, error) {
 		return Envelope{}, apperr.MessageInvalidPayload()
 	}
 	return env, nil
-}
-
-func DecodeClientMessageSend(payload []byte) (ClientMessageSend, error) {
-	env, err := DecodeEnvelope(payload)
-	if err != nil {
-		return ClientMessageSend{}, err
-	}
-	if env.Type != EventTypeMessageSend {
-		return ClientMessageSend{}, apperr.MessageInvalidPayload()
-	}
-	return DecodeClientMessageSendData(env.Data)
 }
 
 func DecodeClientMessageSendData(payload []byte) (ClientMessageSend, error) {

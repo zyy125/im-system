@@ -14,18 +14,19 @@
 - `delivered` 表示成员的 `last_acked_msg_seq` 已推进到指定 seq。
 - `read` 表示成员的 `last_read_msg_seq` 已推进到指定 seq。
 - `read_seq` 不能超过当前成员已送达位置；越界请求会被拒绝。
+- 会话内 `seq` 保证单调递增，但在事务失败等恢复场景下允许空洞。
 - 离线补推和 `sync` 都基于会话内 `seq` 语义补齐，不依赖实时链路瞬时状态。
 
 ## 离线补推与 sync
 
 - 离线补推从成员的 `last_acked_msg_seq` 继续读取。
 - `sync` 接口用于显式补拉某个会话 `after_seq` 之后的消息。
-- 如果连接写队列或 pending 队列溢出，连接会被标记为 `needs_sync`，后续重连仍可从数据库真源补齐缺失消息。
+- 如果连接写队列或 pending 队列溢出，服务端会下发 `sync.required` 事件，提示客户端改用 `sync` 接口补齐缺失消息。
 
 ## 在线状态
 
 - 在线状态存储在 Redis，并带 TTL。
-- 建立连接时写入 presence key。
+- 同一用户第一条连接建立时写入 presence key，最后一条连接断开时删除。
 - 心跳期间会续租 TTL。
 - 正常断开时主动删除；异常退出时依赖 TTL 自动过期。
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/zyy125/im-system/config"
@@ -17,7 +18,7 @@ type MockAuthRepo struct {
 }
 
 type MockTokenBlacklistRepo struct {
-	tokens map[string]bool
+	tokens map[string]time.Duration
 }
 
 func (m *MockAuthRepo) Create(ctx context.Context, user *model.User) error {
@@ -63,15 +64,15 @@ func (m *MockAuthRepo) ListByIDs(ctx context.Context, ids []uint64) ([]model.Use
 }
 
 func (m *MockTokenBlacklistRepo) IsBlacklisted(ctx context.Context, token string) (bool, error) {
-	blacklisted, ok := m.tokens[token]
+	ttl, ok := m.tokens[token]
 	if !ok {
 		return false, nil
 	}
-	return blacklisted, nil
+	return ttl > 0, nil
 }
 
-func (m *MockTokenBlacklistRepo) Blacklist(ctx context.Context, token string) error {
-	m.tokens[token] = true
+func (m *MockTokenBlacklistRepo) Blacklist(ctx context.Context, token string, ttl time.Duration) error {
+	m.tokens[token] = ttl
 	return nil
 }
 
@@ -81,7 +82,7 @@ func TestAuthService_Register(t *testing.T) {
 		Secret: "test-secret",
 		Expiry: 1,
 	}
-	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]bool)}
+	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
 	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
 
 	ctx := context.Background()
@@ -124,7 +125,7 @@ func TestAuthService_Login(t *testing.T) {
 		Secret: "test-secret",
 		Expiry: 1,
 	}
-	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]bool)}
+	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
 	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
 
 	ctx := context.Background()
@@ -162,7 +163,7 @@ func TestAuthService_Logout(t *testing.T) {
 		Secret: "test-secret",
 		Expiry: 1,
 	}
-	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]bool)}
+	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
 	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
 
 	ctx := context.Background()
@@ -180,10 +181,25 @@ func TestAuthService_Logout(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, claims)
 
-	err = authService.Logout(ctx, claims.ID)
+	err = authService.Logout(ctx, claims.ID, claims.ExpiresAt.Time)
 	assert.NoError(t, err)
 
 	blacklisted, err := tokenBlacklistRepo.IsBlacklisted(ctx, claims.ID)
 	assert.NoError(t, err)
 	assert.True(t, blacklisted)
+	assert.Greater(t, tokenBlacklistRepo.tokens[claims.ID], time.Duration(0))
+}
+
+func TestAuthService_LogoutSkipsExpiredToken(t *testing.T) {
+	authRepo := &MockAuthRepo{users: make(map[string]*model.User)}
+	jwtCfg := &config.JWT{
+		Secret: "test-secret",
+		Expiry: 1,
+	}
+	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
+	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
+
+	err := authService.Logout(context.Background(), "expired-jti", time.Now().Add(-time.Minute))
+	assert.NoError(t, err)
+	assert.Empty(t, tokenBlacklistRepo.tokens)
 }
