@@ -97,3 +97,84 @@ func TestConversationRepo_GroupConversationAllowsMultipleNullSingleKeys(t *testi
 	assert.NotZero(t, conv1.ID)
 	assert.NotZero(t, conv2.ID)
 }
+
+func TestConversationRepo_UpdateLastSentMsgSeq(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewConversationRepo(db)
+	ctx := context.Background()
+
+	group := model.Conversation{Type: model.ConversationTypeGroup, Status: model.ConversationStatusActive, Name: "group"}
+	assert.NoError(t, db.Create(&group).Error)
+	assert.NoError(t, db.Create(&model.ConversationMember{
+		ConversationID: group.ID,
+		UserID:         1,
+		Status:         model.ConversationMemberStatusActive,
+		LastSentMsgSeq: 5,
+	}).Error)
+
+	assert.NoError(t, repo.UpdateLastSentMsgSeq(ctx, group.ID, 1, 12))
+	assert.NoError(t, repo.UpdateLastSentMsgSeq(ctx, group.ID, 1, 9))
+
+	member, err := repo.GetMember(ctx, group.ID, 1)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(12), member.LastSentMsgSeq)
+
+	err = repo.UpdateLastSentMsgSeq(ctx, group.ID, 99, 7)
+	assert.Error(t, err)
+	assert.Equal(t, apperr.CodeConversationMemberNotFound, apperr.CodeOf(err))
+}
+
+func TestConversationRepo_ListGroupReadReceiptTargets(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewConversationRepo(db)
+	ctx := context.Background()
+
+	group := model.Conversation{Type: model.ConversationTypeGroup, Status: model.ConversationStatusActive, Name: "group"}
+	assert.NoError(t, db.Create(&group).Error)
+
+	members := []model.ConversationMember{
+		{ConversationID: group.ID, UserID: 1, Status: model.ConversationMemberStatusActive, LastSentMsgSeq: 12},
+		{ConversationID: group.ID, UserID: 2, Status: model.ConversationMemberStatusActive, LastSentMsgSeq: 15},
+		{ConversationID: group.ID, UserID: 3, Status: model.ConversationMemberStatusActive, LastSentMsgSeq: 25},
+		{ConversationID: group.ID, UserID: 4, Status: model.ConversationMemberStatusActive, LastSentMsgSeq: 35},
+		{ConversationID: group.ID, UserID: 5, Status: model.ConversationMemberStatusLeft, LastSentMsgSeq: 20},
+		{ConversationID: group.ID, UserID: 9, Status: model.ConversationMemberStatusActive, LastSentMsgSeq: 28},
+	}
+	for _, member := range members {
+		item := member
+		assert.NoError(t, db.Create(&item).Error)
+	}
+
+	targets, err := repo.ListGroupReadReceiptTargets(ctx, group.ID, 9, 10, 30)
+	assert.NoError(t, err)
+	assert.Equal(t, []uint64{1, 2, 3}, targets)
+
+	emptyTargets, err := repo.ListGroupReadReceiptTargets(ctx, group.ID, 9, 30, 30)
+	assert.NoError(t, err)
+	assert.Empty(t, emptyTargets)
+}
+
+func TestConversationRepo_ListReadReceiptUsersBySentSeq(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewConversationRepo(db)
+	ctx := context.Background()
+
+	group := model.Conversation{Type: model.ConversationTypeGroup, Status: model.ConversationStatusActive, Name: "group"}
+	assert.NoError(t, db.Create(&group).Error)
+
+	members := []model.ConversationMember{
+		{ConversationID: group.ID, UserID: 1, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 18},
+		{ConversationID: group.ID, UserID: 2, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 22},
+		{ConversationID: group.ID, UserID: 3, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 30},
+		{ConversationID: group.ID, UserID: 4, Status: model.ConversationMemberStatusLeft, LastReadMsgSeq: 99},
+		{ConversationID: group.ID, UserID: 9, Status: model.ConversationMemberStatusActive, LastReadMsgSeq: 40},
+	}
+	for _, member := range members {
+		item := member
+		assert.NoError(t, db.Create(&item).Error)
+	}
+
+	targets, err := repo.ListReadReceiptUsersBySentSeq(ctx, group.ID, 9, 20)
+	assert.NoError(t, err)
+	assert.Equal(t, []uint64{2, 3}, targets)
+}

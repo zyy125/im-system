@@ -86,6 +86,9 @@ func (s *messageSendService) SendTextMessage(ctx context.Context, senderID, conv
 		if err := conversationRepo.SetVisibleForUsers(ctx, conversationID, recipients, true); err != nil {
 			return err
 		}
+		if err := conversationRepo.UpdateLastSentMsgSeq(ctx, conversationID, senderID, msg.Seq); err != nil && apperr.CodeOf(err) != apperr.CodeConversationMemberNotFound {
+			return err
+		}
 		if err := conversationRepo.UpdateLastAckedMsgSeq(ctx, conversationID, senderID, msg.Seq); err != nil && apperr.CodeOf(err) != apperr.CodeConversationMemberNotFound {
 			return err
 		}

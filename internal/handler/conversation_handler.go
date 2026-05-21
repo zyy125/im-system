@@ -91,12 +91,23 @@ func (h *ConversationHandler) Open(c *gin.Context) {
 		return
 	}
 
-	conversation, err := h.conversationService.OpenConversation(requestContext(c), userID, conversationID)
+	result, err := h.conversationService.OpenConversation(requestContext(c), userID, conversationID)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
-	respondOK(c, dto.OpenConversationResp{Conversation: buildConversationItemResp(conversation)})
+
+	resp := dto.OpenConversationResp{
+		Conversation: buildConversationItemResp(result.Conversation),
+	}
+	if result.LatestReadState != nil {
+		resp.LatestReadState = &dto.LatestReadStateResp{
+			LatestSentSeq: result.LatestReadState.LatestSentSeq,
+			ReadByUserIDs: result.LatestReadState.ReadByUserIDs,
+			ReadCount:     len(result.LatestReadState.ReadByUserIDs),
+		}
+	}
+	respondOK(c, resp)
 }
 
 // ListGroups 获取群聊列表

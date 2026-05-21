@@ -6,6 +6,7 @@ import (
 	"github.com/zyy125/im-system/internal/logging"
 	"github.com/zyy125/im-system/internal/model"
 	"github.com/zyy125/im-system/internal/repository"
+	"github.com/zyy125/im-system/internal/service"
 )
 
 type ClientLifecycle interface {
@@ -15,35 +16,24 @@ type ClientLifecycle interface {
 	Disconnect(ctx context.Context, userID uint64)
 }
 
-type OfflineMessageLoader interface {
-	ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error)
-}
-
-type PresenceAudienceProvider interface {
-	ListFriendIDs(ctx context.Context, userID uint64) ([]uint64, error)
-}
-
 type clientLifecycle struct {
-	presenceRepo     repository.PresenceRepo
-	offlineLoader    OfflineMessageLoader
-	presenceAudience PresenceAudienceProvider
-	forward          chan<- *ForwardMessage
-	enqueueUserSync  func(userID, conversationID uint64, reason string)
+	presenceRepo        repository.PresenceRepo
+	conversationService service.ConversationService
+	friendRepo          repository.FriendRepo
+	hub                 *Hub
 }
 
 func NewClientLifecycle(
 	presenceRepo repository.PresenceRepo,
-	offlineLoader OfflineMessageLoader,
-	presenceAudience PresenceAudienceProvider,
-	forward chan<- *ForwardMessage,
-	enqueueUserSync func(userID, conversationID uint64, reason string),
+	conversationService service.ConversationService,
+	friendRepo repository.FriendRepo,
+	hub *Hub,
 ) ClientLifecycle {
 	return &clientLifecycle{
-		presenceRepo:     presenceRepo,
-		offlineLoader:    offlineLoader,
-		presenceAudience: presenceAudience,
-		forward:          forward,
-		enqueueUserSync:  enqueueUserSync,
+		presenceRepo:        presenceRepo,
+		conversationService: conversationService,
+		friendRepo:          friendRepo,
+		hub:                 hub,
 	}
 }
 
@@ -98,10 +88,10 @@ func (l *clientLifecycle) Disconnect(ctx context.Context, userID uint64) {
 }
 
 func (l *clientLifecycle) loadOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error) {
-	if l.offlineLoader == nil {
+	if l.conversationService == nil {
 		return []model.Message{}, nil
 	}
-	msgs, err := l.offlineLoader.ListOfflineMessages(ctx, userID)
+	msgs, err := l.conversationService.ListOfflineMessages(ctx, userID)
 	if err != nil {
 		logging.FromContext(ctx).With("user_id", userID).Error("load offline messages failed", "error", err)
 		return nil, err
@@ -110,11 +100,11 @@ func (l *clientLifecycle) loadOfflineMessages(ctx context.Context, userID uint64
 }
 
 func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, online bool) {
-	if l.presenceAudience == nil || l.forward == nil {
+	if l.friendRepo == nil || l.hub == nil || l.hub.LifecycleForward == nil {
 		return
 	}
 
-	friendIDs, err := l.presenceAudience.ListFriendIDs(ctx, userID)
+	friendIDs, err := l.friendRepo.ListFriendIDs(ctx, userID)
 	if err != nil {
 		logging.FromContext(ctx).With("user_id", userID).Error("list presence audience failed", "error", err)
 		return
@@ -134,14 +124,12 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 
 	for _, friendID := range friendIDs {
 		select {
-		case l.forward <- &ForwardMessage{
+		case l.hub.LifecycleForward <- &ForwardMessage{
 			To:      friendID,
 			Content: payload,
 		}:
 		default:
-			if l.enqueueUserSync != nil {
-				l.enqueueUserSync(friendID, 0, SyncReasonForwardQueueFull)
-			}
+			l.hub.EnqueueUserSync(friendID, 0, SyncReasonForwardQueueFull)
 			logging.FromContext(ctx).With("user_id", userID, "target_user_id", friendID).Warn("presence forward queue is full")
 		}
 	}

@@ -48,6 +48,12 @@ type ConversationRepo interface {
 	UpdateLastAckedMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	// UpdateLastReadMsgSeq 推进某个成员的已读游标。
 	UpdateLastReadMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	// UpdateLastSentMsgSeq 推进某个成员在会话中自己发出的最新业务消息 seq。
+	UpdateLastSentMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	// ListGroupReadReceiptTargets 查询其最新一条业务消息刚刚落入已读区间内的群成员。
+	ListGroupReadReceiptTargets(ctx context.Context, conversationID, readerID, fromExclusive, toInclusive uint64) ([]uint64, error)
+	// ListReadReceiptUsersBySentSeq 查询已读到指定发送消息 seq 的活跃成员（排除发送者自己）。
+	ListReadReceiptUsersBySentSeq(ctx context.Context, conversationID, senderID, sentSeq uint64) ([]uint64, error)
 }
 
 type conversationRepo struct {
@@ -395,6 +401,97 @@ func (r *conversationRepo) UpdateLastReadMsgSeq(ctx context.Context, conversatio
 		return apperr.ConversationMemberUpdateFailed()
 	}
 	return nil
+}
+
+func (r *conversationRepo) UpdateLastSentMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+	if conversationID == 0 || userID == 0 || msgSeq == 0 {
+		return apperr.Required("conversation_id", "user_id", "msg_seq")
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ? AND last_sent_msg_seq < ?", conversationID, userID, msgSeq).
+		Update("last_sent_msg_seq", msgSeq)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		member, err := r.GetMember(ctx, conversationID, userID)
+		if err != nil {
+			return apperr.ConversationMemberNotFound()
+		}
+		if member.LastSentMsgSeq >= msgSeq {
+			return nil
+		}
+		return apperr.ConversationMemberUpdateFailed()
+	}
+	return nil
+}
+
+func (r *conversationRepo) ListGroupReadReceiptTargets(ctx context.Context, conversationID, readerID, fromExclusive, toInclusive uint64) ([]uint64, error) {
+	if conversationID == 0 || readerID == 0 {
+		return nil, apperr.Required("conversation_id", "reader_id")
+	}
+	if toInclusive == 0 || fromExclusive >= toInclusive {
+		return []uint64{}, nil
+	}
+
+	type row struct {
+		UserID uint64 `gorm:"column:user_id"`
+	}
+	rows := make([]row, 0)
+	if err := r.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Select("user_id").
+		Where(
+			"conversation_id = ? AND status = ? AND user_id <> ? AND last_sent_msg_seq > ? AND last_sent_msg_seq <= ?",
+			conversationID,
+			model.ConversationMemberStatusActive,
+			readerID,
+			fromExclusive,
+			toInclusive,
+		).
+		Order("user_id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	targets := make([]uint64, 0, len(rows))
+	for _, row := range rows {
+		targets = append(targets, row.UserID)
+	}
+	return targets, nil
+}
+
+func (r *conversationRepo) ListReadReceiptUsersBySentSeq(ctx context.Context, conversationID, senderID, sentSeq uint64) ([]uint64, error) {
+	if conversationID == 0 || senderID == 0 || sentSeq == 0 {
+		return nil, apperr.Required("conversation_id", "sender_id", "sent_seq")
+	}
+
+	type row struct {
+		UserID uint64 `gorm:"column:user_id"`
+	}
+	rows := make([]row, 0)
+	if err := r.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Select("user_id").
+		Where(
+			"conversation_id = ? AND status = ? AND user_id <> ? AND last_read_msg_seq >= ?",
+			conversationID,
+			model.ConversationMemberStatusActive,
+			senderID,
+			sentSeq,
+		).
+		Order("user_id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	targets := make([]uint64, 0, len(rows))
+	for _, row := range rows {
+		targets = append(targets, row.UserID)
+	}
+	return targets, nil
 }
 
 func ensureConversationMember(tx *gorm.DB, conversationID, userID uint64) error {

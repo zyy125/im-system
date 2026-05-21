@@ -6,6 +6,7 @@ import (
 
 	"github.com/zyy125/im-system/internal/logging"
 	"github.com/zyy125/im-system/internal/repository"
+	"github.com/zyy125/im-system/internal/service"
 )
 
 const maxPendingPerConnection = 512
@@ -67,8 +68,8 @@ type Hub struct {
 
 func NewHub(
 	presenceRepo repository.PresenceRepo,
-	offlineLoader OfflineMessageLoader,
-	presenceAudience PresenceAudienceProvider,
+	conversationService service.ConversationService,
+	friendRepo repository.FriendRepo,
 ) *Hub {
 	lifecycleForward := make(chan *ForwardMessage, 256)
 	hub := &Hub{
@@ -84,12 +85,9 @@ func NewHub(
 	}
 	hub.Lifecycle = NewClientLifecycle(
 		presenceRepo,
-		offlineLoader,
-		presenceAudience,
-		lifecycleForward,
-		func(userID, conversationID uint64, reason string) {
-			hub.EnqueueUserSync(userID, conversationID, reason)
-		},
+		conversationService,
+		friendRepo,
+		hub,
 	)
 	return hub
 }

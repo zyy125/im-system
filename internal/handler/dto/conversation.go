@@ -21,8 +21,15 @@ type ConversationListResp struct {
 	Conversations []ConversationItemResp `json:"conversations"`
 }
 
+type LatestReadStateResp struct {
+	LatestSentSeq uint64   `json:"latest_sent_seq"`
+	ReadByUserIDs []uint64 `json:"read_by_user_ids"`
+	ReadCount     int      `json:"read_count"`
+}
+
 type OpenConversationResp struct {
-	Conversation ConversationItemResp `json:"conversation"`
+	Conversation    ConversationItemResp `json:"conversation"`
+	LatestReadState *LatestReadStateResp `json:"latest_read_state,omitempty"`
 }
 
 type CreateGroupReq struct {

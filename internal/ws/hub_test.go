@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zyy125/im-system/internal/logging"
 	"github.com/zyy125/im-system/internal/model"
+	"github.com/zyy125/im-system/internal/repository"
+	"github.com/zyy125/im-system/internal/service"
 )
 
 type hubTestPresenceRepo struct {
@@ -55,24 +57,26 @@ func (r *hubTestPresenceRepo) BatchGetOnline(_ context.Context, userIDs []uint64
 	return result, nil
 }
 
-type hubTestOfflineLoader struct {
+type hubTestConversationService struct {
+	service.ConversationService
 	listFn func(ctx context.Context, userID uint64) ([]model.Message, error)
 }
 
-func (l *hubTestOfflineLoader) ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error) {
+func (l *hubTestConversationService) ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error) {
 	if l != nil && l.listFn != nil {
 		return l.listFn(ctx, userID)
 	}
 	return []model.Message{}, nil
 }
 
-type hubTestAudience struct {
+type hubTestFriendRepo struct {
+	repository.FriendRepo
 	listFn func(ctx context.Context, userID uint64) ([]uint64, error)
 }
 
-func (a *hubTestAudience) ListFriendIDs(ctx context.Context, userID uint64) ([]uint64, error) {
-	if a != nil && a.listFn != nil {
-		return a.listFn(ctx, userID)
+func (r *hubTestFriendRepo) ListFriendIDs(ctx context.Context, userID uint64) ([]uint64, error) {
+	if r != nil && r.listFn != nil {
+		return r.listFn(ctx, userID)
 	}
 	return []uint64{}, nil
 }
@@ -80,7 +84,7 @@ func (a *hubTestAudience) ListFriendIDs(ctx context.Context, userID uint64) ([]u
 func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 	loaderGate := make(chan struct{})
-	loader := &hubTestOfflineLoader{
+	conversationSvc := &hubTestConversationService{
 		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
 			if userID != 1 {
 				return []model.Message{}, nil
@@ -95,7 +99,7 @@ func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	hub := NewHub(presenceRepo, loader, nil)
+	hub := NewHub(presenceRepo, conversationSvc, nil)
 	go func() {
 		defer close(done)
 		hub.Run(ctx)
@@ -126,7 +130,7 @@ func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 
 func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
-	audience := &hubTestAudience{
+	friendRepo := &hubTestFriendRepo{
 		listFn: func(ctx context.Context, userID uint64) ([]uint64, error) {
 			switch userID {
 			case 1:
@@ -141,7 +145,7 @@ func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	hub := NewHub(presenceRepo, nil, audience)
+	hub := NewHub(presenceRepo, nil, friendRepo)
 	go func() {
 		defer close(done)
 		hub.Run(ctx)
@@ -213,7 +217,7 @@ func TestHub_UnreadyConnectionDoesNotBlockReadySiblingConnection(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 	var callCount int
 	loaderGate := make(chan struct{})
-	loader := &hubTestOfflineLoader{
+	conversationSvc := &hubTestConversationService{
 		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
 			callCount++
 			if userID == 9 && callCount == 1 {
@@ -225,7 +229,7 @@ func TestHub_UnreadyConnectionDoesNotBlockReadySiblingConnection(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	hub := NewHub(presenceRepo, loader, nil)
+	hub := NewHub(presenceRepo, conversationSvc, nil)
 	go func() {
 		defer close(done)
 		hub.Run(ctx)
@@ -255,7 +259,7 @@ func TestHub_UnreadyConnectionDoesNotBlockReadySiblingConnection(t *testing.T) {
 func TestHub_PendingOverflowSendsSyncRequiredAfterBootstrap(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 	loaderGate := make(chan struct{})
-	loader := &hubTestOfflineLoader{
+	conversationSvc := &hubTestConversationService{
 		listFn: func(ctx context.Context, userID uint64) ([]model.Message, error) {
 			if userID == 11 {
 				<-loaderGate
@@ -266,7 +270,7 @@ func TestHub_PendingOverflowSendsSyncRequiredAfterBootstrap(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	hub := NewHub(presenceRepo, loader, nil)
+	hub := NewHub(presenceRepo, conversationSvc, nil)
 	go func() {
 		defer close(done)
 		hub.Run(ctx)

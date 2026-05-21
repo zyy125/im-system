@@ -19,6 +19,9 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 	ctx := context.Background()
 	var savedMsg model.Message
 	var visibleUsers []uint64
+	var lastSentConversationID uint64
+	var lastSentUserID uint64
+	var lastSentSeq uint64
 
 	service := NewMessageSendService(
 		&stubMessageTxManager{
@@ -48,6 +51,12 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 					}
 					return nil
 				},
+				updateLastSentFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+					lastSentConversationID = conversationID
+					lastSentUserID = userID
+					lastSentSeq = msgSeq
+					return nil
+				},
 			},
 		},
 		fixedSeqAllocator(7),
@@ -60,4 +69,7 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 	assert.Equal(t, uint64(7), savedMsg.Seq)
 	assert.Equal(t, []uint64{9, 10}, recipients)
 	assert.Equal(t, []uint64{9, 10}, visibleUsers)
+	assert.Equal(t, uint64(12), lastSentConversationID)
+	assert.Equal(t, uint64(9), lastSentUserID)
+	assert.Equal(t, uint64(7), lastSentSeq)
 }

@@ -29,7 +29,7 @@ type conversationService struct {
 
 type ConversationService interface {
 	// OpenConversation 按会话 ID 打开一个当前用户可访问的会话。
-	OpenConversation(ctx context.Context, userID, conversationID uint64) (ConversationSummary, error)
+	OpenConversation(ctx context.Context, userID, conversationID uint64) (OpenConversationResult, error)
 	// ListOfflineMessages 汇总当前用户所有会话中尚未读到的离线消息。
 	ListOfflineMessages(ctx context.Context, userID uint64) ([]model.Message, error)
 	// MarkRead 将当前用户在指定会话中的已读游标推进到指定 seq，并返回需要接收回执的活跃成员。
@@ -73,6 +73,16 @@ type ConversationPeer struct {
 	ID       uint64
 	Username string
 	Online   bool
+}
+
+type LatestReadState struct {
+	LatestSentSeq uint64
+	ReadByUserIDs []uint64
+}
+
+type OpenConversationResult struct {
+	Conversation    ConversationSummary
+	LatestReadState *LatestReadState
 }
 
 type GroupDetail struct {
@@ -127,17 +137,28 @@ func NewConversationServiceWithRuntime(
 	}
 }
 
-func (s *conversationService) OpenConversation(ctx context.Context, userID, conversationID uint64) (ConversationSummary, error) {
+func (s *conversationService) OpenConversation(ctx context.Context, userID, conversationID uint64) (OpenConversationResult, error) {
 	conv, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
 	if err != nil {
-		return ConversationSummary{}, err
+		return OpenConversationResult{}, err
 	}
 	if !member.Visible {
 		if err := s.conversationRepo.SetVisible(ctx, conversationID, userID, true); err != nil {
-			return ConversationSummary{}, err
+			return OpenConversationResult{}, err
 		}
 	}
-	return s.buildConversationSummary(ctx, userID, conv)
+	summary, err := s.buildConversationSummary(ctx, userID, conv)
+	if err != nil {
+		return OpenConversationResult{}, err
+	}
+	latestReadState, err := s.buildLatestReadState(ctx, member)
+	if err != nil {
+		return OpenConversationResult{}, err
+	}
+	return OpenConversationResult{
+		Conversation:    summary,
+		LatestReadState: latestReadState,
+	}, nil
 }
 
 func (s *conversationService) CreateGroup(ctx context.Context, ownerID uint64, name string, memberIDs []uint64) (ConversationSummary, error) {
@@ -334,7 +355,7 @@ func (s *conversationService) InviteGroupMembers(ctx context.Context, userID, co
 		return nil
 	}
 
-	joinedMsgSeq, err := s.currentConversationMaxSeq(ctx, conversationID)
+	joinedMsgSeq, err := s.messageRepo.GetMaxSeqByConversation(ctx, conversationID)
 	if err != nil {
 		return err
 	}
@@ -470,7 +491,17 @@ func (s *conversationService) ListOfflineMessages(ctx context.Context, userID ui
 		if !member.IsActive() {
 			continue
 		}
-		pending, err := s.listOfflineMessagesForMember(ctx, userID, member)
+
+		// 离线补推以“最后已确认收到的最大 seq”为起点，而不是仅看已读位置。
+		afterSeq := member.LastAckedMsgSeq
+		if member.JoinedMsgSeq > afterSeq {
+			afterSeq = member.JoinedMsgSeq
+		}
+		maxSeq, err := s.messageRepo.GetMaxSeqByConversation(ctx, member.ConversationID)
+		if err != nil {
+			return nil, err
+		}
+		pending, err := s.listConversationRange(ctx, member.ConversationID, afterSeq, maxSeq)
 		if err != nil {
 			return nil, err
 		}
@@ -495,7 +526,7 @@ func (s *conversationService) MarkRead(ctx context.Context, userID, conversation
 		return nil, apperr.Required("user_id", "conversation_id", "read_seq")
 	}
 
-	_, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
+	conv, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -507,10 +538,20 @@ func (s *conversationService) MarkRead(ctx context.Context, userID, conversation
 		return nil, apperr.MessageNotDelivered()
 	}
 
+	oldReadSeq := member.LastReadMsgSeq
 	if err := s.conversationRepo.UpdateLastReadMsgSeq(ctx, conversationID, userID, readSeq); err != nil {
 		return nil, err
 	}
-	return s.listActiveMemberIDs(ctx, conversationID)
+
+	if conv.IsGroup() {
+		return s.conversationRepo.ListGroupReadReceiptTargets(ctx, conversationID, userID, oldReadSeq, readSeq)
+	}
+
+	members, err := s.conversationRepo.ListActiveMembers(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	return memberUserIDs(members), nil
 }
 
 func (s *conversationService) ListConversations(ctx context.Context, userID uint64) ([]ConversationSummary, error) {
@@ -615,6 +656,21 @@ func (s *conversationService) buildConversationSummary(ctx context.Context, user
 		return ConversationSummary{}, apperr.ConversationNotAccessible()
 	}
 	return items[0], nil
+}
+
+func (s *conversationService) buildLatestReadState(ctx context.Context, member model.ConversationMember) (*LatestReadState, error) {
+	if member.ConversationID == 0 || member.UserID == 0 || member.LastSentMsgSeq == 0 {
+		return nil, nil
+	}
+
+	readByUserIDs, err := s.conversationRepo.ListReadReceiptUsersBySentSeq(ctx, member.ConversationID, member.UserID, member.LastSentMsgSeq)
+	if err != nil {
+		return nil, err
+	}
+	return &LatestReadState{
+		LatestSentSeq: member.LastSentMsgSeq,
+		ReadByUserIDs: readByUserIDs,
+	}, nil
 }
 
 func (s *conversationService) buildConversationSummaries(
@@ -774,33 +830,16 @@ func (s *conversationService) requireActiveGroupMember(ctx context.Context, conv
 	return conv, member, nil
 }
 
-func (s *conversationService) currentConversationMaxSeq(ctx context.Context, conversationID uint64) (uint64, error) {
-	return s.messageRepo.GetMaxSeqByConversation(ctx, conversationID)
-}
-
 func (s *conversationService) allocateMessageSeq(ctx context.Context, conversationID uint64) (uint64, error) {
 	if s.seqAllocator != nil {
 		return s.seqAllocator.Allocate(ctx, conversationID)
 	}
 	// 旧路径或测试桩未注入 SeqAllocator 时，退回到基于 DB 最大 seq 的简单分配方式。
-	maxSeq, err := s.currentConversationMaxSeq(ctx, conversationID)
+	maxSeq, err := s.messageRepo.GetMaxSeqByConversation(ctx, conversationID)
 	if err != nil {
 		return 0, err
 	}
 	return maxSeq + 1, nil
-}
-
-func (s *conversationService) listOfflineMessagesForMember(ctx context.Context, userID uint64, member model.ConversationMember) ([]model.Message, error) {
-	// 离线补推以“最后已确认收到的最大 seq”为起点，而不是仅看已读位置。
-	afterSeq := member.LastAckedMsgSeq
-	if member.JoinedMsgSeq > afterSeq {
-		afterSeq = member.JoinedMsgSeq
-	}
-	maxSeq, err := s.messageRepo.GetMaxSeqByConversation(ctx, member.ConversationID)
-	if err != nil {
-		return nil, err
-	}
-	return s.listConversationRange(ctx, member.ConversationID, afterSeq, maxSeq)
 }
 
 func (s *conversationService) listConversationRange(ctx context.Context, conversationID, afterSeq, untilSeq uint64) ([]model.Message, error) {
@@ -874,14 +913,6 @@ func (s *conversationService) withinConversationTx(ctx context.Context, fn func(
 	}
 	// 无事务管理器时退回到直连仓储，主要用于轻量测试桩。
 	return fn(s.messageRepo, s.conversationRepo)
-}
-
-func (s *conversationService) listActiveMemberIDs(ctx context.Context, conversationID uint64) ([]uint64, error) {
-	members, err := s.conversationRepo.ListActiveMembers(ctx, conversationID)
-	if err != nil {
-		return nil, err
-	}
-	return memberUserIDs(members), nil
 }
 
 func (s *conversationService) ensureUsersExist(ctx context.Context, userIDs []uint64) error {

@@ -163,8 +163,12 @@ type stubConversationRepo struct {
 	updateNameFn              func(ctx context.Context, conversationID uint64, name string) error
 	updateStatusFn            func(ctx context.Context, conversationID uint64, status model.ConversationStatus) error
 	updateMemberStatusFn      func(ctx context.Context, conversationID, userID uint64, status model.ConversationMemberStatus, visible bool) error
+	updateAllMemberStatusFn   func(ctx context.Context, conversationID uint64, status model.ConversationMemberStatus, visible bool) error
 	updateLastAckedFn         func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	updateLastReadFn          func(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	updateLastSentFn          func(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	listGroupReadTargetsFn    func(ctx context.Context, conversationID, readerID, fromExclusive, toInclusive uint64) ([]uint64, error)
+	listReadReceiptUsersFn    func(ctx context.Context, conversationID, senderID, sentSeq uint64) ([]uint64, error)
 }
 
 func (s *stubConversationRepo) Create(ctx context.Context, conversation *model.Conversation) error {
@@ -273,6 +277,9 @@ func (s *stubConversationRepo) UpdateMemberStatus(ctx context.Context, conversat
 }
 
 func (s *stubConversationRepo) UpdateAllMemberStatus(ctx context.Context, conversationID uint64, status model.ConversationMemberStatus, visible bool) error {
+	if s.updateAllMemberStatusFn != nil {
+		return s.updateAllMemberStatusFn(ctx, conversationID, status, visible)
+	}
 	return nil
 }
 
@@ -288,6 +295,27 @@ func (s *stubConversationRepo) UpdateLastReadMsgSeq(ctx context.Context, convers
 		return s.updateLastReadFn(ctx, conversationID, userID, msgSeq)
 	}
 	return nil
+}
+
+func (s *stubConversationRepo) UpdateLastSentMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+	if s.updateLastSentFn != nil {
+		return s.updateLastSentFn(ctx, conversationID, userID, msgSeq)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) ListGroupReadReceiptTargets(ctx context.Context, conversationID, readerID, fromExclusive, toInclusive uint64) ([]uint64, error) {
+	if s.listGroupReadTargetsFn != nil {
+		return s.listGroupReadTargetsFn(ctx, conversationID, readerID, fromExclusive, toInclusive)
+	}
+	return []uint64{}, nil
+}
+
+func (s *stubConversationRepo) ListReadReceiptUsersBySentSeq(ctx context.Context, conversationID, senderID, sentSeq uint64) ([]uint64, error) {
+	if s.listReadReceiptUsersFn != nil {
+		return s.listReadReceiptUsersFn(ctx, conversationID, senderID, sentSeq)
+	}
+	return []uint64{}, nil
 }
 
 type stubMessageRepo struct {
