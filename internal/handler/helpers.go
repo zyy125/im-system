@@ -50,7 +50,7 @@ func respondError(c *gin.Context, err error) {
 
 func bindJSON(c *gin.Context, dst any) bool {
 	if err := c.ShouldBindJSON(dst); err != nil {
-		respondError(c, apperr.InvalidBody("parameter validation error"))
+		response.FailError(c, apperr.InvalidBody("parameter validation error"))
 		return false
 	}
 	return true
@@ -58,7 +58,7 @@ func bindJSON(c *gin.Context, dst any) bool {
 
 func bindOptionalJSON(c *gin.Context, dst any) bool {
 	if err := c.ShouldBindJSON(dst); err != nil && !errors.Is(err, io.EOF) {
-		respondError(c, apperr.InvalidBody("parameter validation error"))
+		response.FailError(c, apperr.InvalidBody("parameter validation error"))
 		return false
 	}
 	return true
@@ -67,7 +67,7 @@ func bindOptionalJSON(c *gin.Context, dst any) bool {
 func parseUintParam(c *gin.Context, name, invalidMessage string) (uint64, bool) {
 	value, err := strconv.ParseUint(c.Param(name), 10, 64)
 	if err != nil || value == 0 {
-		respondError(c, apperr.InvalidArgument(invalidMessage))
+		response.FailError(c, apperr.InvalidArgument(invalidMessage))
 		return 0, false
 	}
 	return value, true
@@ -76,7 +76,7 @@ func parseUintParam(c *gin.Context, name, invalidMessage string) (uint64, bool) 
 func parseUintQueryError(c *gin.Context, key string, err error) (uint64, bool) {
 	value, parseErr := strconv.ParseUint(c.Query(key), 10, 64)
 	if parseErr != nil || value == 0 {
-		respondError(c, err)
+		response.FailError(c, err)
 		return 0, false
 	}
 	return value, true

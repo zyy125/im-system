@@ -27,8 +27,9 @@ type InitRouterParams struct {
 }
 
 func InitRouter(params *InitRouterParams) *gin.Engine {
-	r := gin.Default()
-	r.Use(middleware.ErrorSourceLogger())
+	r := gin.New()
+	r.Use(middleware.RequestLogger())
+	r.Use(middleware.Recovery())
 
 	// Swagger 文档
 	if gin.Mode() != gin.ReleaseMode {

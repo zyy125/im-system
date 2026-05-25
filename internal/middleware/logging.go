@@ -4,108 +4,65 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zyy125/im-system/pkg/response"
 )
 
-const (
-	errorSourceKey  = "error_source"
-	errorMessageKey = "error_message"
-	errorCodeKey    = "error_code"
-)
-
-type ErrorSource struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Function string `json:"function"`
-}
-
-func ErrorSourceLogger() gin.HandlerFunc {
+func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		c.Next()
 
-		if c.Writer.Status() < 400 {
-			return
-		}
-
-		message := getString(c, errorMessageKey)
-		code := getString(c, errorCodeKey)
-		source, ok := getErrorSource(c)
-		if !ok {
-			return
-		}
-		slog.Error(
-			"http request failed",
-			"status", c.Writer.Status(),
-			"code", code,
+		status := c.Writer.Status()
+		args := []any{
+			"event_type", "http_request",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
-			"file", source.File,
-			"line", source.Line,
-			"function", source.Function,
-			"message", message,
-		)
-	}
-}
+			"status", status,
+			"latency_ms", time.Since(start).Milliseconds(),
+			"client_ip", c.ClientIP(),
+			"user_agent", c.Request.UserAgent(),
+		}
 
-func getString(c *gin.Context, key string) string {
-	value, ok := c.Get(key)
-	if !ok {
-		return ""
-	}
-	s, _ := value.(string)
-	return s
-}
+		if userID := c.GetUint64("userID"); userID != 0 {
+			args = append(args, "user_id", userID)
+		}
 
-func getErrorSource(c *gin.Context) (ErrorSource, bool) {
-	value, ok := c.Get(errorSourceKey)
-	if !ok {
-		return ErrorSource{}, false
-	}
-	switch source := value.(type) {
-	case ErrorSource:
-		source.File = shortenFile(source.File)
-		return source, true
-	case map[string]any:
-		return errorSourceFromMap(source)
-	case gin.H:
-		return errorSourceFromMap(map[string]any(source))
-	default:
-		return ErrorSource{}, false
-	}
-}
+		if value, ok := c.Get(response.RequestErrorContextKey); ok {
+			requestErr, ok := value.(response.RequestError)
+			if ok {
+				if requestErr.Code != "" {
+					args = append(args, "error_code", requestErr.Code)
+				}
+				if requestErr.Message != "" {
+					args = append(args, "error_message", requestErr.Message)
+				}
+				if requestErr.File != "" {
+					normalized := filepath.ToSlash(requestErr.File)
+					if idx := strings.Index(normalized, "/im-system/"); idx >= 0 {
+						normalized = normalized[idx+1:]
+					}
+					args = append(args, "file", normalized)
+				}
+				if requestErr.Line != 0 {
+					args = append(args, "line", requestErr.Line)
+				}
+				if requestErr.Function != "" {
+					args = append(args, "function", requestErr.Function)
+				}
+			}
+		}
 
-func shortenFile(file string) string {
-	normalized := filepath.ToSlash(file)
-	if idx := strings.Index(normalized, "/im-system/"); idx >= 0 {
-		return normalized[idx+1:]
+		logger := slog.Default()
+		switch {
+		case status >= 500:
+			logger.Error("http request completed", args...)
+		case status >= 400:
+			logger.Warn("http request completed", args...)
+		default:
+			logger.Info("http request completed", args...)
+		}
 	}
-	return normalized
-}
-
-func errorSourceFromMap(source map[string]any) (ErrorSource, bool) {
-	file, _ := source["file"].(string)
-	function, _ := source["function"].(string)
-
-	line := 0
-	switch v := source["line"].(type) {
-	case int:
-		line = v
-	case int32:
-		line = int(v)
-	case int64:
-		line = int(v)
-	case float64:
-		line = int(v)
-	}
-
-	if file == "" || line == 0 {
-		return ErrorSource{}, false
-	}
-
-	return ErrorSource{
-		File:     shortenFile(file),
-		Line:     line,
-		Function: function,
-	}, true
 }
