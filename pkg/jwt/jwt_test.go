@@ -18,7 +18,7 @@ func TestParseJWT(t *testing.T) {
 		{"wrong secret", "wrong-secret", true},
 	}
 
-	token, _, _ := GenerateJWT("123", "test-secret", time.Hour)
+	token, _, _ := GenerateJWT("123", "session-1", "test-secret", time.Hour)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -127,38 +127,3 @@ func (h *MessageHandler) Sync(c *gin.Context) {
 		MaxReturnedSeq: maxReturnedSeq,
 	})
 }
-
-// MarkRead 标记消息已读
-// @Summary 标记消息已读
-// @Description 根据会话 ID 和 read_seq 推进当前用户的已读游标
-// @Tags 消息
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param req body dto.MarkReadReq true "已读请求"
-// @Success 200 {object} response.Response "标记成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 401 {object} response.Response "未认证"
-// @Failure 403 {object} response.Response "无权访问该会话或消息不可读"
-// @Failure 409 {object} response.Response "read_seq 尚未送达"
-// @Failure 500 {object} response.Response "内部服务器错误"
-// @Router /api/v1/messages/read [post]
-func (h *MessageHandler) MarkRead(c *gin.Context) {
-	userID := currentUserID(c)
-
-	var req dto.MarkReadReq
-	if !bindJSON(c, &req) {
-		return
-	}
-	if req.ConversationID == 0 || req.ReadSeq == 0 {
-		respondError(c, apperr.Required("conversation_id", "read_seq"))
-		return
-	}
-
-	if _, err := h.conversationSyncService.MarkRead(requestContext(c), userID, req.ConversationID, req.ReadSeq); err != nil {
-		respondError(c, err)
-		return
-	}
-
-	respondOK(c, nil)
-}

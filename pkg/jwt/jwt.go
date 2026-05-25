@@ -9,15 +9,17 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"user_id"`
+	UserID    string `json:"user_id"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
 }
 
-func GenerateJWT(userID string, secret string, expiry time.Duration) (string, string, error) {
+func GenerateJWT(userID, sessionID, secret string, expiry time.Duration) (string, string, error) {
 	now := time.Now()
 	jti := utils.GenerateUUID()
 	claims := Claims{
-		UserID: userID,
+		UserID:    userID,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "im-system",
 			ID:        jti,

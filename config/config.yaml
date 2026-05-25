@@ -1,6 +1,7 @@
 jwt:
   secret: "123456"
-  expiry: 24
+  access_expiry: 2
+  refresh_expiry: 720
 
 app:
   env: "development"

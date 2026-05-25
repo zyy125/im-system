@@ -62,6 +62,10 @@ func TokenBlacklisted() *Error {
 	return Unauthorized(CodeAuthTokenBlacklisted, "token is blacklisted")
 }
 
+func RefreshTokenInvalid() *Error {
+	return Unauthorized(CodeAuthRefreshTokenInvalid, "refresh token is invalid")
+}
+
 func UserNotFound() *Error {
 	return NotFound(CodeUserNotFound, "user not found")
 }

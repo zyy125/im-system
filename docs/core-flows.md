@@ -437,9 +437,10 @@
 
 ### 9.1 入口
 
-- HTTP 接口：`POST /api/v1/messages/read`
+- WebSocket 事件：`message.read`
 - 代码入口：
-  - [message_handler.go](/home/zhuyin/im-system/internal/handler/message_handler.go)
+  - [client.go](/home/zhuyin/im-system/internal/ws/client.go)
+  - [chat_handler.go](/home/zhuyin/im-system/internal/ws/chat_handler.go)
   - [conversation_service.go](/home/zhuyin/im-system/internal/service/conversation_service.go)
 
 ### 9.2 请求格式
@@ -453,8 +454,8 @@
 
 ### 9.3 链路步骤
 
-1. 客户端在某个会话中，把自己“已经读到的最后一条消息”告诉后端。
-2. `MessageHandler.MarkRead` 校验：
+1. 客户端在某个会话中，把自己“已经读到的最后一条消息”通过 WebSocket 事件告诉后端。
+2. `MessageAckHandler.HandleMessageRead` 校验：
    - `conversation_id` 不能为空
    - `read_seq` 不能为空
 3. `ConversationService.MarkRead` 执行：
@@ -489,7 +490,7 @@
 
 如果你要用一句话概括当前系统的核心主链路，可以这样说：
 
-> 用户先通过 HTTP 登录拿到 JWT，再通过 WebSocket 建立实时连接；好友关系通过“申请 -> 同意”形成，并同步创建单聊会话；发消息时先同步入库，提交成功后向发送方返回 `message.sent`、向接收方转发 `message.created`；接收方用 `message.delivered` 推进送达游标，用 `message.read` 或 HTTP read 推进已读游标；用户重连时系统根据 `seq` 从 MySQL 真源补推尚未确认收到的消息。
+> 用户先通过 HTTP 登录拿到 JWT，再通过 WebSocket 建立实时连接；好友关系通过“申请 -> 同意”形成，并同步创建单聊会话；发消息时先同步入库，提交成功后向发送方返回 `message.sent`、向接收方转发 `message.created`；接收方用 `message.delivered` 推进送达游标，用 `message.read` 推进已读游标；用户重连时系统根据 `seq` 从 MySQL 真源补推尚未确认收到的消息。
 
 这句话基本就把你现在这个项目最有含金量的部分讲全了。
 

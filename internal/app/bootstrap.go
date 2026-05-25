@@ -14,16 +14,17 @@ import (
 
 // repositories 聚合所有数据访问层依赖，便于在装配函数间传递。
 type repositories struct {
-	userRepo          repository.UserRepo
-	blacklistRepo     repository.TokenBlacklistRepo
-	presenceRepo      repository.PresenceRepo
-	msgRepo           repository.MessageRepo
-	friendRepo        repository.FriendRepo
-	friendRequestRepo repository.FriendRequestRepo
-	conversationRepo  repository.ConversationRepo
-	messageTxManager  repository.MessageTxManager
-	messageStateRepo  repository.MessageStateRepo
-	redisClient       *redis.Client
+	userRepo           repository.UserRepo
+	blacklistRepo      repository.TokenBlacklistRepo
+	refreshSessionRepo repository.RefreshSessionRepo
+	presenceRepo       repository.PresenceRepo
+	msgRepo            repository.MessageRepo
+	friendRepo         repository.FriendRepo
+	friendRequestRepo  repository.FriendRequestRepo
+	conversationRepo   repository.ConversationRepo
+	messageTxManager   repository.MessageTxManager
+	messageStateRepo   repository.MessageStateRepo
+	redisClient        *redis.Client
 }
 
 // services 聚合所有业务逻辑层依赖。
@@ -55,16 +56,17 @@ type handlers struct {
 
 func initRepositories(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *repositories {
 	return &repositories{
-		userRepo:          repository.NewUserRepo(db),
-		blacklistRepo:     repository.NewTokenBlacklistRepo(rdb),
-		presenceRepo:      repository.NewPresenceRepo(rdb, cfg.Presence.TTL),
-		msgRepo:           repository.NewMessageRepo(db),
-		friendRepo:        repository.NewFriendRepo(db),
-		friendRequestRepo: repository.NewFriendRequestRepo(db),
-		conversationRepo:  repository.NewConversationRepo(db),
-		messageTxManager:  repository.NewMessageTxManager(db),
-		messageStateRepo:  repository.NewMessageStateRepo(rdb),
-		redisClient:       rdb,
+		userRepo:           repository.NewUserRepo(db),
+		blacklistRepo:      repository.NewTokenBlacklistRepo(rdb),
+		refreshSessionRepo: repository.NewRefreshSessionRepo(rdb),
+		presenceRepo:       repository.NewPresenceRepo(rdb, cfg.Presence.TTL),
+		msgRepo:            repository.NewMessageRepo(db),
+		friendRepo:         repository.NewFriendRepo(db),
+		friendRequestRepo:  repository.NewFriendRequestRepo(db),
+		conversationRepo:   repository.NewConversationRepo(db),
+		messageTxManager:   repository.NewMessageTxManager(db),
+		messageStateRepo:   repository.NewMessageStateRepo(rdb),
+		redisClient:        rdb,
 	}
 }
 
@@ -88,7 +90,7 @@ func initServices(cfg *config.Config, repos *repositories) *services {
 	)
 
 	return &services{
-		authSvc:          service.NewAuthService(repos.userRepo, &cfg.JWT, repos.blacklistRepo),
+		authSvc:          service.NewAuthService(repos.userRepo, &cfg.JWT, repos.blacklistRepo, repos.refreshSessionRepo),
 		userSvc:          service.NewUserService(repos.userRepo, repos.presenceRepo),
 		friendSvc:        friendSvc,
 		friendRequestSvc: service.NewFriendRequestService(repos.friendRequestRepo, friendSvc, repos.userRepo, repos.presenceRepo),

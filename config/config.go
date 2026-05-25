@@ -38,10 +38,11 @@ type Redis struct {
 	DB       int    `mapstructure:"db"`
 }
 
-// JWT 保存签名密钥和有效期（小时）。
+// JWT 保存签名密钥和 access/refresh token 的有效期（小时）。
 type JWT struct {
-	Secret string `mapstructure:"secret"`
-	Expiry int64  `mapstructure:"expiry"`
+	Secret        string `mapstructure:"secret"`
+	AccessExpiry  int64  `mapstructure:"access_expiry"`
+	RefreshExpiry int64  `mapstructure:"refresh_expiry"`
 }
 
 type WS struct {
@@ -102,8 +103,14 @@ func (c *Config) Validate() error {
 	if c.App.Env == "production" && len(strings.TrimSpace(c.JWT.Secret)) < 16 {
 		return errors.New("jwt.secret must be at least 16 characters in production")
 	}
-	if c.JWT.Expiry <= 0 {
-		return errors.New("jwt.expiry must be greater than 0")
+	if c.JWT.AccessExpiry <= 0 {
+		return errors.New("jwt.access_expiry must be greater than 0")
+	}
+	if c.JWT.RefreshExpiry <= 0 {
+		return errors.New("jwt.refresh_expiry must be greater than 0")
+	}
+	if c.JWT.RefreshExpiry <= c.JWT.AccessExpiry {
+		return errors.New("jwt.refresh_expiry must be greater than jwt.access_expiry")
 	}
 	if c.Presence.TTL <= 0 {
 		return errors.New("presence.ttl must be greater than 0")

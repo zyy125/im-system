@@ -16,6 +16,7 @@ import (
 
 type AuthResult struct {
 	UserID    uint64
+	SessionID string
 	JTI       string
 	ExpiresAt time.Time
 }
@@ -29,6 +30,7 @@ func AuthMiddleware(secret string, tokenBlacklistRepo repository.TokenBlacklistR
 		}
 
 		c.Set("userID", result.UserID)
+		c.Set("sessionID", result.SessionID)
 		c.Set("jti", result.JTI)
 		c.Set("tokenExpiresAt", result.ExpiresAt)
 		c.Next()
@@ -65,6 +67,9 @@ func authenticateToken(ctx context.Context, token, secret string, tokenBlacklist
 	if claims.ExpiresAt == nil {
 		return AuthResult{}, apperr.TokenInvalid()
 	}
+	if strings.TrimSpace(claims.SessionID) == "" {
+		return AuthResult{}, apperr.TokenInvalid()
+	}
 
 	blacklisted, err := tokenBlacklistRepo.IsBlacklisted(ctx, claims.ID)
 	if err != nil {
@@ -81,6 +86,7 @@ func authenticateToken(ctx context.Context, token, secret string, tokenBlacklist
 
 	return AuthResult{
 		UserID:    uid,
+		SessionID: claims.SessionID,
 		JTI:       claims.ID,
 		ExpiresAt: claims.ExpiresAt.Time,
 	}, nil

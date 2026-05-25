@@ -1481,75 +1481,6 @@
                 }
             }
         },
-        "/api/v1/messages/read": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "根据会话 ID 和 read_seq 推进当前用户的已读游标",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "消息"
-                ],
-                "summary": "标记消息已读",
-                "parameters": [
-                    {
-                        "description": "已读请求",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.MarkReadReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "标记成功",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "401": {
-                        "description": "未认证",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "403": {
-                        "description": "无权访问该会话或消息不可读",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "409": {
-                        "description": "read_seq 尚未送达",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "内部服务器错误",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/messages/sync": {
             "get": {
                 "security": [
@@ -2095,21 +2026,6 @@
                     "items": {
                         "type": "integer"
                     }
-                }
-            }
-        },
-        "dto.MarkReadReq": {
-            "type": "object",
-            "required": [
-                "conversation_id",
-                "read_seq"
-            ],
-            "properties": {
-                "conversation_id": {
-                    "type": "integer"
-                },
-                "read_seq": {
-                    "type": "integer"
                 }
             }
         },

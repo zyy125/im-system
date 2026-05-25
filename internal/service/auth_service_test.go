@@ -21,6 +21,16 @@ type MockTokenBlacklistRepo struct {
 	tokens map[string]time.Duration
 }
 
+type MockRefreshSessionRepo struct {
+	sessions map[string]mockRefreshSession
+}
+
+type mockRefreshSession struct {
+	userID           uint64
+	refreshTokenHash string
+	ttl              time.Duration
+}
+
 func (m *MockAuthRepo) Create(ctx context.Context, user *model.User) error {
 	if _, ok := m.users[user.Username]; ok {
 		return gorm.ErrDuplicatedKey
@@ -76,14 +86,41 @@ func (m *MockTokenBlacklistRepo) Blacklist(ctx context.Context, token string, tt
 	return nil
 }
 
+func (m *MockRefreshSessionRepo) Create(ctx context.Context, sessionID string, userID uint64, refreshTokenHash string, ttl time.Duration) error {
+	m.sessions[sessionID] = mockRefreshSession{
+		userID:           userID,
+		refreshTokenHash: refreshTokenHash,
+		ttl:              ttl,
+	}
+	return nil
+}
+
+func (m *MockRefreshSessionRepo) Rotate(ctx context.Context, sessionID, oldRefreshTokenHash, newRefreshTokenHash string, ttl time.Duration) (uint64, bool, error) {
+	session, ok := m.sessions[sessionID]
+	if !ok || session.refreshTokenHash != oldRefreshTokenHash {
+		return 0, false, nil
+	}
+	session.refreshTokenHash = newRefreshTokenHash
+	session.ttl = ttl
+	m.sessions[sessionID] = session
+	return session.userID, true, nil
+}
+
+func (m *MockRefreshSessionRepo) Delete(ctx context.Context, sessionID string) error {
+	delete(m.sessions, sessionID)
+	return nil
+}
+
 func TestAuthService_Register(t *testing.T) {
 	authRepo := &MockAuthRepo{users: make(map[string]*model.User)}
 	jwtCfg := &config.JWT{
-		Secret: "test-secret",
-		Expiry: 1,
+		Secret:        "test-secret",
+		AccessExpiry:  1,
+		RefreshExpiry: 24,
 	}
 	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
-	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
+	refreshSessionRepo := &MockRefreshSessionRepo{sessions: make(map[string]mockRefreshSession)}
+	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo, refreshSessionRepo)
 
 	ctx := context.Background()
 
@@ -122,11 +159,13 @@ func TestAuthService_Register(t *testing.T) {
 func TestAuthService_Login(t *testing.T) {
 	authRepo := &MockAuthRepo{users: make(map[string]*model.User)}
 	jwtCfg := &config.JWT{
-		Secret: "test-secret",
-		Expiry: 1,
+		Secret:        "test-secret",
+		AccessExpiry:  1,
+		RefreshExpiry: 24,
 	}
 	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
-	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
+	refreshSessionRepo := &MockRefreshSessionRepo{sessions: make(map[string]mockRefreshSession)}
+	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo, refreshSessionRepo)
 
 	ctx := context.Background()
 	username := "login-user"
@@ -137,34 +176,38 @@ func TestAuthService_Login(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("Success", func(t *testing.T) {
-		token, err := authService.Login(ctx, username, pwd)
+		tokens, err := authService.Login(ctx, username, pwd)
 		assert.NoError(t, err)
-		assert.NotEmpty(t, token)
+		assert.NotEmpty(t, tokens.AccessToken)
+		assert.NotEmpty(t, tokens.RefreshToken)
+		assert.Equal(t, int64(time.Hour/time.Second), tokens.ExpiresIn)
 	})
 
 	t.Run("WrongPassword", func(t *testing.T) {
-		token, err := authService.Login(ctx, username, "wrong-password")
+		tokens, err := authService.Login(ctx, username, "wrong-password")
 		assert.Error(t, err)
 		assert.Equal(t, apperr.CodeAuthInvalidCredentials, apperr.CodeOf(err))
-		assert.Empty(t, token)
+		assert.Empty(t, tokens.AccessToken)
 	})
 
 	t.Run("UserNotFound", func(t *testing.T) {
-		token, err := authService.Login(ctx, "non-existent", pwd)
+		tokens, err := authService.Login(ctx, "non-existent", pwd)
 		assert.Error(t, err)
 		assert.Equal(t, apperr.CodeAuthInvalidCredentials, apperr.CodeOf(err))
-		assert.Empty(t, token)
+		assert.Empty(t, tokens.AccessToken)
 	})
 }
 
-func TestAuthService_Logout(t *testing.T) {
+func TestAuthService_RefreshAndLogout(t *testing.T) {
 	authRepo := &MockAuthRepo{users: make(map[string]*model.User)}
 	jwtCfg := &config.JWT{
-		Secret: "test-secret",
-		Expiry: 1,
+		Secret:        "test-secret",
+		AccessExpiry:  1,
+		RefreshExpiry: 24,
 	}
 	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
-	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
+	refreshSessionRepo := &MockRefreshSessionRepo{sessions: make(map[string]mockRefreshSession)}
+	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo, refreshSessionRepo)
 
 	ctx := context.Background()
 	username := "test-user"
@@ -173,33 +216,54 @@ func TestAuthService_Logout(t *testing.T) {
 	err := authService.Register(ctx, username, pwd)
 	assert.NoError(t, err)
 
-	token, err := authService.Login(ctx, username, pwd)
+	tokens, err := authService.Login(ctx, username, pwd)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, token)
+	assert.NotEmpty(t, tokens.AccessToken)
+	assert.NotEmpty(t, tokens.RefreshToken)
 
-	claims, err := jwt.ParseJWT(token, jwtCfg.Secret)
+	claims, err := jwt.ParseJWT(tokens.AccessToken, jwtCfg.Secret)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, claims)
+	assert.NotEmpty(t, claims.SessionID)
 
-	err = authService.Logout(ctx, claims.ID, claims.ExpiresAt.Time)
+	refreshed, err := authService.Refresh(ctx, tokens.RefreshToken)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, refreshed.AccessToken)
+	assert.NotEmpty(t, refreshed.RefreshToken)
+	assert.NotEqual(t, tokens.RefreshToken, refreshed.RefreshToken)
+
+	_, err = authService.Refresh(ctx, tokens.RefreshToken)
+	assert.Error(t, err)
+	assert.Equal(t, apperr.CodeAuthRefreshTokenInvalid, apperr.CodeOf(err))
+
+	err = authService.Logout(ctx, claims.ID, claims.SessionID, claims.ExpiresAt.Time)
 	assert.NoError(t, err)
 
 	blacklisted, err := tokenBlacklistRepo.IsBlacklisted(ctx, claims.ID)
 	assert.NoError(t, err)
 	assert.True(t, blacklisted)
 	assert.Greater(t, tokenBlacklistRepo.tokens[claims.ID], time.Duration(0))
+	_, ok := refreshSessionRepo.sessions[claims.SessionID]
+	assert.False(t, ok)
 }
 
 func TestAuthService_LogoutSkipsExpiredToken(t *testing.T) {
 	authRepo := &MockAuthRepo{users: make(map[string]*model.User)}
 	jwtCfg := &config.JWT{
-		Secret: "test-secret",
-		Expiry: 1,
+		Secret:        "test-secret",
+		AccessExpiry:  1,
+		RefreshExpiry: 24,
 	}
 	tokenBlacklistRepo := &MockTokenBlacklistRepo{tokens: make(map[string]time.Duration)}
-	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo)
+	refreshSessionRepo := &MockRefreshSessionRepo{sessions: make(map[string]mockRefreshSession)}
+	authService := NewAuthService(authRepo, jwtCfg, tokenBlacklistRepo, refreshSessionRepo)
 
-	err := authService.Logout(context.Background(), "expired-jti", time.Now().Add(-time.Minute))
+	err := refreshSessionRepo.Create(context.Background(), "session-expired", 1, "hash", time.Hour)
+	assert.NoError(t, err)
+
+	err = authService.Logout(context.Background(), "expired-jti", "session-expired", time.Now().Add(-time.Minute))
 	assert.NoError(t, err)
 	assert.Empty(t, tokenBlacklistRepo.tokens)
+	_, ok := refreshSessionRepo.sessions["session-expired"]
+	assert.False(t, ok)
 }

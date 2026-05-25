@@ -11,5 +11,17 @@ type UserLoginReq struct {
 }
 
 type UserLoginResp struct {
-	Token string `json:"token"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+}
+
+type UserRefreshReq struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+type UserRefreshResp struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
 }

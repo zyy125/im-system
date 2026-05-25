@@ -40,7 +40,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 // Login 用户登录
 // @Summary 用户登录
-// @Description 用户登录，返回 JWT token。后续 HTTP 受保护接口必须通过 `Authorization: Bearer <token>` 传递。
+// @Description 用户登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过 `Authorization: Bearer <access_token>` 传递。
 // @Tags 用户
 // @Accept json
 // @Produce json
@@ -56,12 +56,46 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.Login(requestContext(c), req.Username, req.Password)
+	tokens, err := h.authService.Login(requestContext(c), req.Username, req.Password)
 	if err != nil {
 		respondError(c, err)
 		return
 	}
-	respondOK(c, dto.UserLoginResp{Token: token})
+	respondOK(c, dto.UserLoginResp{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
+	})
+}
+
+// Refresh 刷新 access token
+// @Summary 刷新 access token
+// @Description 使用 refresh token 换取新的一组 access/refresh token。
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Param req body dto.UserRefreshReq true "刷新 token 请求"
+// @Success 200 {object} response.Response{data=dto.UserRefreshResp} "刷新成功"
+// @Failure 400 {object} response.Response "参数校验错误"
+// @Failure 401 {object} response.Response "refresh token 无效"
+// @Failure 500 {object} response.Response "内部服务器错误"
+// @Router /api/v1/auth/refresh [post]
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req dto.UserRefreshReq
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	tokens, err := h.authService.Refresh(requestContext(c), req.RefreshToken)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	respondOK(c, dto.UserRefreshResp{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
+	})
 }
 
 // Logout 用户登出
@@ -76,7 +110,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure 500 {object} response.Response "内部服务器错误"
 // @Router /api/v1/auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
-	if err := h.authService.Logout(requestContext(c), c.GetString("jti"), currentTokenExpiresAt(c)); err != nil {
+	if err := h.authService.Logout(requestContext(c), c.GetString("jti"), currentSessionID(c), currentTokenExpiresAt(c)); err != nil {
 		respondError(c, err)
 		return
 	}

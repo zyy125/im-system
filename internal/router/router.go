@@ -54,6 +54,7 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/refresh", authHandler.Refresh)
 			auth.POST("/logout", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo), authHandler.Logout)
 		}
 
@@ -87,7 +88,6 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 		{
 			messages.GET("/history", messageHandler.History)
 			messages.GET("/sync", messageHandler.Sync)
-			messages.POST("/read", messageHandler.MarkRead)
 		}
 
 		conversations := api.Group("/conversations", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))

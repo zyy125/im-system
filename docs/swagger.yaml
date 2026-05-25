@@ -150,16 +150,6 @@ definitions:
     required:
     - member_ids
     type: object
-  dto.MarkReadReq:
-    properties:
-      conversation_id:
-        type: integer
-      read_seq:
-        type: integer
-    required:
-    - conversation_id
-    - read_seq
-    type: object
   dto.MessageHistoryResp:
     properties:
       has_more:
@@ -1291,50 +1281,6 @@ paths:
       security:
       - BearerAuth: []
       summary: 获取消息历史
-      tags:
-      - 消息
-  /api/v1/messages/read:
-    post:
-      consumes:
-      - application/json
-      description: 根据会话 ID 和 read_seq 推进当前用户的已读游标
-      parameters:
-      - description: 已读请求
-        in: body
-        name: req
-        required: true
-        schema:
-          $ref: '#/definitions/dto.MarkReadReq'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 标记成功
-          schema:
-            $ref: '#/definitions/response.Response'
-        "400":
-          description: 参数错误
-          schema:
-            $ref: '#/definitions/response.Response'
-        "401":
-          description: 未认证
-          schema:
-            $ref: '#/definitions/response.Response'
-        "403":
-          description: 无权访问该会话或消息不可读
-          schema:
-            $ref: '#/definitions/response.Response'
-        "409":
-          description: read_seq 尚未送达
-          schema:
-            $ref: '#/definitions/response.Response'
-        "500":
-          description: 内部服务器错误
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - BearerAuth: []
-      summary: 标记消息已读
       tags:
       - 消息
   /api/v1/messages/sync:

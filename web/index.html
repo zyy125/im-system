@@ -659,31 +659,11 @@
             const lastMsg = incomingMsgs[incomingMsgs.length - 1];
             if (!lastMsg || !lastMsg.conversation_id || !lastMsg.msg_id) return;
 
-            try {
-                await axios.post(`${API_BASE}/messages/read`, {
-                    conversation_id: String(lastMsg.conversation_id),
-                    msg_id: lastMsg.msg_id
-                }, {
-                    headers: { Authorization: `Bearer ${state.token}` }
-                });
-
-                const target = state.conversations.find(item => conversationKey(item) === conversationKey(conversation));
-                if (target) {
-                    target.unread_count = 0;
-                    upsertConversation(target);
-                    refreshActiveConversationRef();
-                }
-            } catch (err) {
-                console.error('更新已读失败:', err);
-                const code = err.response?.data?.code;
-                if (state.readRetryTimers[peerId]) {
-                    clearTimeout(state.readRetryTimers[peerId]);
-                }
-                if (code === 'message.not_found' || code === 'message.not_delivered') {
-                    state.readRetryTimers[peerId] = setTimeout(() => {
-                        markConversationRead(conversation);
-                    }, 300);
-                }
+            const target = state.conversations.find(item => conversationKey(item) === conversationKey(conversation));
+            if (target) {
+                target.unread_count = 0;
+                upsertConversation(target);
+                refreshActiveConversationRef();
             }
         }
 

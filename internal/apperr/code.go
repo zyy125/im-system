@@ -24,6 +24,7 @@ const (
 	CodeAuthTokenInvalid        Code = "auth.token_invalid"
 	CodeAuthTokenExpired        Code = "auth.token_expired"
 	CodeAuthTokenBlacklisted    Code = "auth.token_blacklisted"
+	CodeAuthRefreshTokenInvalid Code = "auth.refresh_token_invalid"
 
 	CodeUserNotFound     Code = "user.not_found"
 	CodeUserAlreadyExist Code = "user.already_exists"
@@ -78,6 +79,7 @@ var httpStatusByCode = map[Code]int{
 	CodeAuthTokenInvalid:        http.StatusUnauthorized,
 	CodeAuthTokenExpired:        http.StatusUnauthorized,
 	CodeAuthTokenBlacklisted:    http.StatusUnauthorized,
+	CodeAuthRefreshTokenInvalid: http.StatusUnauthorized,
 
 	CodeUserNotFound:     http.StatusNotFound,
 	CodeUserAlreadyExist: http.StatusConflict,

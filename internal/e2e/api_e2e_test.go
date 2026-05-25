@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zyy125/im-system/config"
+	"github.com/zyy125/im-system/internal/apperr"
 	"github.com/zyy125/im-system/internal/handler"
 	"github.com/zyy125/im-system/internal/handler/dto"
 	"github.com/zyy125/im-system/internal/model"
@@ -142,6 +143,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	messageRepo := repository.NewMessageRepo(db)
 	messageTxManager := repository.NewMessageTxManager(db)
 	messageStateRepo := repository.NewInMemoryMessageStateRepo()
+	refreshSessionRepo := repository.NewInMemoryRefreshSessionRepo()
 	presenceRepo := newInMemoryPresenceRepo()
 	blacklistRepo := newInMemoryTokenBlacklistRepo()
 
@@ -151,8 +153,9 @@ func newTestEnv(t *testing.T) *testEnv {
 			HTTPAddr: ":0",
 		},
 		JWT: config.JWT{
-			Secret: "test-secret",
-			Expiry: 24,
+			Secret:        "test-secret",
+			AccessExpiry:  24,
+			RefreshExpiry: 720,
 		},
 		WS:       config.WS{},
 		Presence: config.Presence{},
@@ -169,7 +172,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	go hub.Run(ctx)
 
 	engine := router.InitRouter(&router.InitRouterParams{
-		AuthHandler:          handler.NewAuthHandler(service.NewAuthService(userRepo, &cfg.JWT, blacklistRepo)),
+		AuthHandler:          handler.NewAuthHandler(service.NewAuthService(userRepo, &cfg.JWT, blacklistRepo, refreshSessionRepo)),
 		WSHandler:            handler.NewWSHandler(hub, messageSendSvc, messageSvc, conversationSvc, cfg.JWT.Secret, blacklistRepo, cfg.WS, cfg.App.Env),
 		UserHandler:          handler.NewUserHandler(service.NewUserService(userRepo, presenceRepo)),
 		FriendHandler:        handler.NewFriendHandler(friendSvc),
@@ -208,6 +211,49 @@ func TestGolden_RegisterAndLogin(t *testing.T) {
 	assert.Equal(t, userID, me.ID)
 	assert.Equal(t, "alice", me.Username)
 	assert.False(t, me.Online)
+}
+
+func TestGolden_RefreshAndLogout(t *testing.T) {
+	env := newTestEnv(t)
+
+	resp := doJSON(t, env, http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"username": "alice",
+		"password": "secret123",
+	})
+	assert.Equal(t, "ok", resp.Code)
+
+	resp = doJSON(t, env, http.MethodPost, "/api/v1/auth/login", "", map[string]any{
+		"username": "alice",
+		"password": "secret123",
+	})
+	assert.Equal(t, "ok", resp.Code)
+
+	var login dto.UserLoginResp
+	decodeData(t, resp, &login)
+	require.NotEmpty(t, login.AccessToken)
+	require.NotEmpty(t, login.RefreshToken)
+
+	refreshResp := doJSON(t, env, http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": login.RefreshToken,
+	})
+	assert.Equal(t, "ok", refreshResp.Code)
+
+	var refreshed dto.UserRefreshResp
+	decodeData(t, refreshResp, &refreshed)
+	require.NotEmpty(t, refreshed.AccessToken)
+	require.NotEmpty(t, refreshed.RefreshToken)
+	assert.NotEqual(t, login.RefreshToken, refreshed.RefreshToken)
+
+	me := doJSON(t, env, http.MethodGet, "/api/v1/users/me", refreshed.AccessToken, nil)
+	assert.Equal(t, "ok", me.Code)
+
+	logout := doJSON(t, env, http.MethodPost, "/api/v1/auth/logout", refreshed.AccessToken, nil)
+	assert.Equal(t, "ok", logout.Code)
+
+	refreshAfterLogout := doJSON(t, env, http.MethodPost, "/api/v1/auth/refresh", "", map[string]any{
+		"refresh_token": refreshed.RefreshToken,
+	})
+	assert.Equal(t, string(apperr.CodeAuthRefreshTokenInvalid), refreshAfterLogout.Code)
 }
 
 func TestGolden_FriendRequestAndAccept(t *testing.T) {
@@ -310,11 +356,13 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 	deliveryReceipt := readDeliveryReceipt(t, aliceConn, openBody.Conversation.ID, bobID, delivered.Seq, 5*time.Second)
 	assert.Equal(t, delivered.Seq, deliveryReceipt.DeliveredSeq)
 
-	readResp := doJSON(t, env, http.MethodPost, "/api/v1/messages/read", bobToken, map[string]any{
-		"conversation_id": openBody.Conversation.ID,
-		"read_seq":        delivered.Seq,
-	})
-	assert.Equal(t, "ok", readResp.Code)
+	require.NoError(t, bobConn.WriteJSON(map[string]any{
+		"type": ws.EventTypeMessageRead,
+		"data": map[string]any{
+			"conversation_id": openBody.Conversation.ID,
+			"read_seq":        delivered.Seq,
+		},
+	}))
 
 	require.Eventually(t, func() bool {
 		historyResp := doJSON(t, env, http.MethodGet, "/api/v1/messages/history?conversation_id="+uintToString(openBody.Conversation.ID), aliceToken, nil)
@@ -438,12 +486,12 @@ func registerAndLogin(t *testing.T, env *testEnv, username, password string) (ui
 
 	var login dto.UserLoginResp
 	decodeData(t, resp, &login)
-	require.NotEmpty(t, login.Token)
+	require.NotEmpty(t, login.AccessToken)
 
-	me := doJSON(t, env, http.MethodGet, "/api/v1/users/me", login.Token, nil)
+	me := doJSON(t, env, http.MethodGet, "/api/v1/users/me", login.AccessToken, nil)
 	var meBody dto.UserInfoResp
 	decodeData(t, me, &meBody)
-	return meBody.ID, login.Token
+	return meBody.ID, login.AccessToken
 }
 
 func makeFriends(t *testing.T, env *testEnv, requesterToken, receiverToken string, receiverID uint64) {

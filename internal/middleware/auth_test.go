@@ -25,7 +25,7 @@ func TestAuthenticateHTTPRequestRequiresBearerHeader(t *testing.T) {
 }
 
 func TestAuthenticateWSRequestAllowsQueryToken(t *testing.T) {
-	token, _, err := jwt.GenerateJWT("1", "secret", time.Hour)
+	token, _, err := jwt.GenerateJWT("1", "session-1", "secret", time.Hour)
 	if err != nil {
 		t.Fatalf("generate jwt: %v", err)
 	}
@@ -37,6 +37,9 @@ func TestAuthenticateWSRequestAllowsQueryToken(t *testing.T) {
 	}
 	if result.UserID != 1 {
 		t.Fatalf("expected user id 1, got %d", result.UserID)
+	}
+	if result.SessionID != "session-1" {
+		t.Fatalf("expected session id session-1, got %q", result.SessionID)
 	}
 	if result.ExpiresAt.IsZero() {
 		t.Fatal("expected token expiry to be present")

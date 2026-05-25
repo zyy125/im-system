@@ -14,8 +14,9 @@ func TestConfigValidate(t *testing.T) {
 		Mysql: Mysql{DSN: "root:pass@tcp(localhost:3306)/im"},
 		Redis: Redis{Addr: "localhost:6379"},
 		JWT: JWT{
-			Secret: "development-secret",
-			Expiry: 24,
+			Secret:        "development-secret",
+			AccessExpiry:  24,
+			RefreshExpiry: 720,
 		},
 		Presence: Presence{
 			TTL:               90 * time.Second,

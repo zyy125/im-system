@@ -23,6 +23,10 @@ func currentUserID(c *gin.Context) uint64 {
 	return c.GetUint64("userID")
 }
 
+func currentSessionID(c *gin.Context) string {
+	return c.GetString("sessionID")
+}
+
 func currentTokenExpiresAt(c *gin.Context) time.Time {
 	value, ok := c.Get("tokenExpiresAt")
 	if !ok {
