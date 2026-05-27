@@ -172,7 +172,7 @@ func (h *ConversationHandler) ListGroups(c *gin.Context) {
 
 // CreateGroup 创建群聊
 // @Summary 创建群聊
-// @Description 创建一个群聊并可携带初始成员
+// @Description 创建一个群聊并可携带初始成员，member_ids 使用用户 public_id。
 // @Tags 会话
 // @Accept json
 // @Produce json
@@ -307,7 +307,7 @@ func (h *ConversationHandler) UpdateGroupName(c *gin.Context) {
 
 // InviteGroupMembers 邀请成员入群
 // @Summary 邀请成员入群
-// @Description 邀请用户加入指定群聊
+// @Description 邀请用户加入指定群聊，member_ids 使用用户 public_id。
 // @Tags 会话
 // @Accept json
 // @Produce json
@@ -352,7 +352,7 @@ func (h *ConversationHandler) InviteGroupMembers(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "群会话ID"
-// @Param user_id path int true "成员用户ID"
+// @Param user_id path int true "成员用户 public_id"
 // @Success 200 {object} response.Response "操作成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"

@@ -62,11 +62,11 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 
 // GetUserInfo 获取指定用户信息
 // @Summary 获取指定用户信息
-// @Description 根据用户ID查询基础信息与在线状态
+// @Description 根据用户 public_id 查询基础信息与在线状态
 // @Tags 用户
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "用户ID"
+// @Param id path int true "用户 public_id"
 // @Success 200 {object} response.Response{data=dto.UserInfoResp} "查询成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"

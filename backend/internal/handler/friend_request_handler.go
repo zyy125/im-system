@@ -20,12 +20,12 @@ func NewFriendRequestHandler(friendRequestService service.FriendRequestService, 
 
 // Send 发送好友申请
 // @Summary 发送好友申请
-// @Description 向指定用户发送好友申请；若存在反向待处理申请，则自动同意
+// @Description 向指定 public_id 用户发送好友申请；若存在反向待处理申请，则自动同意
 // @Tags 好友申请
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "目标用户ID"
+// @Param id path int true "目标用户 public_id"
 // @Param req body dto.SendFriendRequestReq false "附言"
 // @Success 200 {object} response.Response "发送成功"
 // @Failure 400 {object} response.Response "参数错误"

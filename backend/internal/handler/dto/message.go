@@ -16,7 +16,7 @@ type MessageResp struct {
 	From           uint64             `json:"from"`
 	SendTime       int64              `json:"send_time"`
 	Content        string             `json:"content"`
-	Extra          json.RawMessage    `json:"extra,omitempty"`
+	Extra          json.RawMessage    `json:"extra,omitempty" swaggertype:"object"`
 }
 
 type MessageHistoryResp struct {

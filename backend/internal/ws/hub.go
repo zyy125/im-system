@@ -64,6 +64,7 @@ type Hub struct {
 	markSync      chan *syncRequest
 	closeRequests chan struct{}
 	done          chan struct{}
+	metrics       *HubMetrics
 }
 
 func NewHub(
@@ -83,6 +84,7 @@ func NewHub(
 		markSync:           make(chan *syncRequest, 256),
 		closeRequests:      make(chan struct{}, 1),
 		done:               make(chan struct{}),
+		metrics:            &HubMetrics{},
 	}
 	hub.Lifecycle = NewClientLifecycle(
 		presenceRepo,
@@ -180,6 +182,7 @@ func (h *Hub) EnqueueForwards(ctx context.Context, forwardMsgs []*ForwardMessage
 		select {
 		case h.Forward <- forwardMsg:
 		default:
+			h.metrics.forwardQueueFullTotal.Add(1)
 			h.EnqueueUserSync(forwardMsg.To, forwardMsg.ConversationID, SyncReasonForwardQueueFull)
 			logging.FromContext(ctx).With("target_user_id", forwardMsg.To).Warn("forward queue full, mark connection needs sync")
 		}
@@ -209,6 +212,9 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 		client:  client,
 		pending: make([][]byte, 0),
 	}
+	h.metrics.registerTotal.Add(1)
+	h.metrics.users.Store(int64(len(h.Clients)))
+	h.metrics.connections.Store(int64(h.connectionCount()))
 
 	if firstConnection && h.Lifecycle != nil {
 		h.Lifecycle.Connect(ctx, client.UserID)
@@ -252,8 +258,10 @@ func closeClientConn(client *Client) {
 func (h *Hub) bootstrapClient(ctx context.Context, client *Client) {
 	payloads := make([][]byte, 0)
 	if h.Lifecycle != nil {
+		h.metrics.bootstrapTotal.Add(1)
 		offlinePayloads, err := h.Lifecycle.Bootstrap(ctx, client.UserID)
 		if err != nil {
+			h.metrics.bootstrapFailedTotal.Add(1)
 			logging.With("user_id", client.UserID, "connection_id", client.ConnectionID).Error("bootstrap client failed", "error", err)
 		} else {
 			payloads = offlinePayloads
@@ -313,6 +321,7 @@ func (h *Hub) deliverToConnection(ctx context.Context, conn *clientConnection, m
 	if h.pushPayload(conn, msg.Content) {
 		return
 	}
+	h.metrics.sendQueueFullTotal.Add(1)
 	h.requireConnectionSync(ctx, conn, msg.ConversationID, SyncReasonSendQueueFull)
 	logging.With(
 		"user_id", conn.client.UserID,
@@ -322,6 +331,7 @@ func (h *Hub) deliverToConnection(ctx context.Context, conn *clientConnection, m
 
 func (h *Hub) enqueuePending(ctx context.Context, conn *clientConnection, msg *ForwardMessage) {
 	if len(conn.pending) >= maxPendingPerConnection {
+		h.metrics.pendingQueueFullTotal.Add(1)
 		h.requireConnectionSync(ctx, conn, msg.ConversationID, SyncReasonPendingQueueFull)
 		logging.With(
 			"user_id", conn.client.UserID,
@@ -390,9 +400,11 @@ func (h *Hub) emitSyncRequired(ctx context.Context, conn *clientConnection) {
 	}
 	if h.pushPayload(conn, payload) {
 		conn.pendingSync = nil
+		h.metrics.syncRequiredEmittedTotal.Add(1)
 		return
 	}
 
+	h.metrics.syncDeliveryFailCloseTotal.Add(1)
 	logging.With(
 		"user_id", conn.client.UserID,
 		"connection_id", conn.client.ConnectionID,
@@ -423,6 +435,9 @@ func (h *Hub) removeConnection(ctx context.Context, client *Client, reason strin
 			h.Lifecycle.Disconnect(ctx, client.UserID)
 		}
 	}
+	h.metrics.unregisterTotal.Add(1)
+	h.metrics.users.Store(int64(len(h.Clients)))
+	h.metrics.connections.Store(int64(h.connectionCount()))
 
 	logging.With(
 		"user_id", client.UserID,
@@ -494,4 +509,36 @@ func normalizeCloseReason(reason string) string {
 		return CloseReasonUnknown
 	}
 	return reason
+}
+
+func (h *Hub) Snapshot() HubSnapshot {
+	if h == nil || h.metrics == nil {
+		return HubSnapshot{}
+	}
+
+	return HubSnapshot{
+		Users:                      h.metrics.users.Load(),
+		Connections:                h.metrics.connections.Load(),
+		RegisterQueueLen:           len(h.Register),
+		RegisterQueueCap:           cap(h.Register),
+		UnregisterQueueLen:         len(h.Unregister),
+		UnregisterQueueCap:         cap(h.Unregister),
+		ForwardQueueLen:            len(h.Forward),
+		ForwardQueueCap:            cap(h.Forward),
+		LifecycleForwardLen:        len(h.LifecycleForward),
+		LifecycleForwardCap:        cap(h.LifecycleForward),
+		MarkSyncQueueLen:           len(h.markSync),
+		MarkSyncQueueCap:           cap(h.markSync),
+		BootstrappedQueueLen:       len(h.ClientBootstrapped),
+		BootstrappedQueueCap:       cap(h.ClientBootstrapped),
+		RegisterTotal:              h.metrics.registerTotal.Load(),
+		UnregisterTotal:            h.metrics.unregisterTotal.Load(),
+		ForwardQueueFullTotal:      h.metrics.forwardQueueFullTotal.Load(),
+		PendingQueueFullTotal:      h.metrics.pendingQueueFullTotal.Load(),
+		SendQueueFullTotal:         h.metrics.sendQueueFullTotal.Load(),
+		SyncRequiredEmittedTotal:   h.metrics.syncRequiredEmittedTotal.Load(),
+		BootstrapTotal:             h.metrics.bootstrapTotal.Load(),
+		BootstrapFailedTotal:       h.metrics.bootstrapFailedTotal.Load(),
+		SyncDeliveryFailCloseTotal: h.metrics.syncDeliveryFailCloseTotal.Load(),
+	}
 }

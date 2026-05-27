@@ -119,9 +119,73 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "description": "使用 refresh token 换取新的一组 access/refresh token。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户"
+                ],
+                "summary": "刷新 access token",
+                "parameters": [
+                    {
+                        "description": "刷新 token 请求",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UserRefreshReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "刷新成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.UserRefreshResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数校验错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "refresh token 无效",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "内部服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/register": {
             "post": {
-                "description": "用户注册",
+                "description": "用户注册，成功后返回当前账号的 public_id。",
                 "consumes": [
                     "application/json"
                 ],
@@ -280,7 +344,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建一个群聊并可携带初始成员",
+                "description": "创建一个群聊并可携带初始成员，member_ids 使用用户 public_id。",
                 "consumes": [
                     "application/json"
                 ],
@@ -495,7 +559,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "邀请用户加入指定群聊",
+                "description": "邀请用户加入指定群聊，member_ids 使用用户 public_id。",
                 "consumes": [
                     "application/json"
                 ],
@@ -741,7 +805,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "成员用户ID",
+                        "description": "成员用户 public_id",
                         "name": "user_id",
                         "in": "path",
                         "required": true
@@ -1102,7 +1166,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "向指定用户发送好友申请；若存在反向待处理申请，则自动同意",
+                "description": "向指定 public_id 用户发送好友申请；若存在反向待处理申请，则自动同意",
                 "consumes": [
                     "application/json"
                 ],
@@ -1116,7 +1180,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "目标用户ID",
+                        "description": "目标用户 public_id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1366,7 +1430,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "删除当前用户与指定用户的好友关系",
+                "description": "删除当前用户与指定 public_id 用户的好友关系",
                 "produces": [
                     "application/json"
                 ],
@@ -1377,7 +1441,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "好友用户ID",
+                        "description": "好友用户 public_id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1686,7 +1750,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据用户ID查询基础信息与在线状态",
+                "description": "根据用户 public_id 查询基础信息与在线状态",
                 "produces": [
                     "application/json"
                 ],
@@ -1697,7 +1761,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "用户ID",
+                        "description": "用户 public_id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1826,7 +1890,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "last_message": {
-                    "$ref": "#/definitions/model.Message"
+                    "$ref": "#/definitions/dto.MessageResp"
                 },
                 "name": {
                     "type": "string"
@@ -2041,6 +2105,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.LatestReadStateResp": {
+            "type": "object",
+            "properties": {
+                "latest_sent_seq": {
+                    "type": "integer"
+                },
+                "read_by_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "read_count": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.MessageHistoryResp": {
             "type": "object",
             "properties": {
@@ -2050,11 +2131,46 @@ const docTemplate = `{
                 "messages": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.Message"
+                        "$ref": "#/definitions/dto.MessageResp"
                     }
                 },
                 "next_before_seq": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.MessageResp": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "integer"
+                },
+                "event": {
+                    "$ref": "#/definitions/model.MessageEvent"
+                },
+                "extra": {
+                    "type": "object"
+                },
+                "from": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "msg_id": {
+                    "type": "string"
+                },
+                "send_time": {
+                    "type": "integer"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.MessageType"
                 }
             }
         },
@@ -2070,7 +2186,7 @@ const docTemplate = `{
                 "messages": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.Message"
+                        "$ref": "#/definitions/dto.MessageResp"
                     }
                 }
             }
@@ -2080,6 +2196,9 @@ const docTemplate = `{
             "properties": {
                 "conversation": {
                     "$ref": "#/definitions/dto.ConversationItemResp"
+                },
+                "latest_read_state": {
+                    "$ref": "#/definitions/dto.LatestReadStateResp"
                 }
             }
         },
@@ -2145,11 +2264,28 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.UserRegisterResp": {
+        "dto.UserRefreshReq": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UserRefreshResp": {
             "type": "object",
             "properties": {
-                "public_id": {
+                "access_token": {
+                    "type": "string"
+                },
+                "expires_in": {
                     "type": "integer"
+                },
+                "refresh_token": {
+                    "type": "string"
                 }
             }
         },
@@ -2165,6 +2301,14 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.UserRegisterResp": {
+            "type": "object",
+            "properties": {
+                "public_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -2255,50 +2399,6 @@ const docTemplate = `{
                 "FriendRequestAccepted",
                 "FriendRequestRejected"
             ]
-        },
-        "model.Message": {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "conversation_id": {
-                    "type": "integer"
-                },
-                "event": {
-                    "description": "系统消息事件类型，普通文本消息为空",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/model.MessageEvent"
-                        }
-                    ]
-                },
-                "extra": {
-                    "description": "系统消息携带的结构化附加数据",
-                    "type": "object"
-                },
-                "from": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "msg_id": {
-                    "description": "客户端生成的幂等 ID，用于去重",
-                    "type": "string"
-                },
-                "send_time": {
-                    "description": "Unix 毫秒时间戳",
-                    "type": "integer"
-                },
-                "seq": {
-                    "description": "会话内单调递增序列号，由 SeqAllocator 分配",
-                    "type": "integer"
-                },
-                "type": {
-                    "$ref": "#/definitions/model.MessageType"
-                }
-            }
         },
         "model.MessageEvent": {
             "type": "string",

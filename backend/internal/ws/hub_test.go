@@ -398,9 +398,47 @@ func TestHub_EnqueueForwardsMarksSyncWhenForwardQueueFull(t *testing.T) {
 		assert.Equal(t, uint64(30), req.userID)
 		assert.Equal(t, uint64(99), req.conversationID)
 		assert.Equal(t, SyncReasonForwardQueueFull, req.reason)
+		assert.Equal(t, int64(1), hub.Snapshot().ForwardQueueFullTotal)
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected markSync request when forward queue is full")
 	}
+}
+
+func TestHub_SnapshotTracksRegisterAndUnregister(t *testing.T) {
+	presenceRepo := newHubTestPresenceRepo()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	hub := NewHub(presenceRepo, nil, nil, &hubTestUserService{})
+	go func() {
+		defer close(done)
+		hub.Run(ctx)
+	}()
+
+	first := &Client{UserID: 1, Send: make(chan []byte, 4)}
+	second := &Client{UserID: 1, Send: make(chan []byte, 4)}
+	hub.Register <- first
+	waitForUserID(t, presenceRepo.setOnline, 1)
+	hub.Register <- second
+	time.Sleep(50 * time.Millisecond)
+
+	snapshot := hub.Snapshot()
+	assert.Equal(t, int64(1), snapshot.Users)
+	assert.Equal(t, int64(2), snapshot.Connections)
+	assert.Equal(t, int64(2), snapshot.RegisterTotal)
+
+	hub.EnqueueUnregister(first)
+	hub.EnqueueUnregister(second)
+	waitForUserID(t, presenceRepo.setOffline, 1)
+	time.Sleep(50 * time.Millisecond)
+
+	snapshot = hub.Snapshot()
+	assert.Equal(t, int64(0), snapshot.Users)
+	assert.Equal(t, int64(0), snapshot.Connections)
+	assert.Equal(t, int64(2), snapshot.UnregisterTotal)
+
+	cancel()
+	waitForHubDone(t, done)
 }
 
 func waitForUserID(t *testing.T, ch <-chan uint64, want uint64) {

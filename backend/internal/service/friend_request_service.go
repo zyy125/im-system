@@ -79,9 +79,6 @@ func (s *friendRequestService) Send(ctx context.Context, requesterID, receiverID
 
 	// Check if there's a pending request in the opposite direction to auto-accept
 	_, err = s.friendRequestRepo.FindPendingBetween(ctx, receiverID, requesterID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", err
-	}
 	if err == nil {
 		if err := s.friendService.AddFriend(ctx, requesterID, receiverID); err != nil {
 			return "", err
@@ -91,13 +88,16 @@ func (s *friendRequestService) Send(ctx context.Context, requesterID, receiverID
 		}
 		return "auto_accepted", nil
 	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", err
+	}
 
 	// Check if there's already a pending request in the same direction
 	_, err = s.friendRequestRepo.FindPendingBetween(ctx, requesterID, receiverID)
 	if err == nil {
 		return "pending", nil
 	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", err
 	}
 

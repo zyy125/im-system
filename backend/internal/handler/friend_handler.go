@@ -17,11 +17,11 @@ func NewFriendHandler(friendService service.FriendService, userService service.U
 
 // RemoveFriend 删除好友
 // @Summary 删除好友
-// @Description 删除当前用户与指定用户的好友关系
+// @Description 删除当前用户与指定 public_id 用户的好友关系
 // @Tags 好友
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "好友用户ID"
+// @Param id path int true "好友用户 public_id"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"

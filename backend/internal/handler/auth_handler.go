@@ -16,14 +16,13 @@ func NewAuthHandler(authService service.AuthService) *AuthHandler {
 
 // Register 用户注册
 // @Summary 用户注册
-// @Description 用户注册
+// @Description 用户注册，成功后返回当前账号的 public_id。
 // @Tags 用户
 // @Accept json
 // @Produce json
 // @Param req body dto.UserRegisterReq true "用户注册请求"
-// @Success 201 {object} response.Response "注册成功"
+// @Success 201 {object} response.Response{data=dto.UserRegisterResp} "注册成功"
 // @Failure 400 {object} response.Response "参数校验错误"
-// @Failure 409 {object} response.Response "注册冲突"
 // @Failure 500 {object} response.Response "内部服务器错误"
 // @Router /api/v1/auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {

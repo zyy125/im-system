@@ -12,7 +12,7 @@ definitions:
       id:
         type: integer
       last_message:
-        $ref: '#/definitions/model.Message'
+        $ref: '#/definitions/dto.MessageResp'
       name:
         type: string
       peer:
@@ -150,16 +150,50 @@ definitions:
     required:
     - member_ids
     type: object
+  dto.LatestReadStateResp:
+    properties:
+      latest_sent_seq:
+        type: integer
+      read_by_user_ids:
+        items:
+          type: integer
+        type: array
+      read_count:
+        type: integer
+    type: object
   dto.MessageHistoryResp:
     properties:
       has_more:
         type: boolean
       messages:
         items:
-          $ref: '#/definitions/model.Message'
+          $ref: '#/definitions/dto.MessageResp'
         type: array
       next_before_seq:
         type: integer
+    type: object
+  dto.MessageResp:
+    properties:
+      content:
+        type: string
+      conversation_id:
+        type: integer
+      event:
+        $ref: '#/definitions/model.MessageEvent'
+      extra:
+        type: object
+      from:
+        type: integer
+      id:
+        type: integer
+      msg_id:
+        type: string
+      send_time:
+        type: integer
+      seq:
+        type: integer
+      type:
+        $ref: '#/definitions/model.MessageType'
     type: object
   dto.MessageSyncResp:
     properties:
@@ -169,13 +203,15 @@ definitions:
         type: integer
       messages:
         items:
-          $ref: '#/definitions/model.Message'
+          $ref: '#/definitions/dto.MessageResp'
         type: array
     type: object
   dto.OpenConversationResp:
     properties:
       conversation:
         $ref: '#/definitions/dto.ConversationItemResp'
+      latest_read_state:
+        $ref: '#/definitions/dto.LatestReadStateResp'
     type: object
   dto.SendFriendRequestReq:
     properties:
@@ -217,10 +253,21 @@ definitions:
       refresh_token:
         type: string
     type: object
-  dto.UserRegisterResp:
+  dto.UserRefreshReq:
     properties:
-      public_id:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  dto.UserRefreshResp:
+    properties:
+      access_token:
+        type: string
+      expires_in:
         type: integer
+      refresh_token:
+        type: string
     type: object
   dto.UserRegisterReq:
     properties:
@@ -231,6 +278,11 @@ definitions:
     required:
     - password
     - username
+    type: object
+  dto.UserRegisterResp:
+    properties:
+      public_id:
+        type: integer
     type: object
   model.ConversationMemberRole:
     enum:
@@ -300,35 +352,6 @@ definitions:
     - FriendRequestPending
     - FriendRequestAccepted
     - FriendRequestRejected
-  model.Message:
-    properties:
-      content:
-        type: string
-      conversation_id:
-        type: integer
-      event:
-        allOf:
-        - $ref: '#/definitions/model.MessageEvent'
-        description: 系统消息事件类型，普通文本消息为空
-      extra:
-        description: 系统消息携带的结构化附加数据
-        type: object
-      from:
-        type: integer
-      id:
-        type: integer
-      msg_id:
-        description: 客户端生成的幂等 ID，用于去重
-        type: string
-      send_time:
-        description: Unix 毫秒时间戳
-        type: integer
-      seq:
-        description: 会话内单调递增序列号，由 SeqAllocator 分配
-        type: integer
-      type:
-        $ref: '#/definitions/model.MessageType'
-    type: object
   model.MessageEvent:
     enum:
     - ""
@@ -383,8 +406,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 使用 public_id 和密码登录，返回 access token 和 refresh token。后续 HTTP
-        受保护接口必须通过 `Authorization: Bearer <access_token>` 传递。
+      description: '使用 public_id 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过
+        `Authorization: Bearer <access_token>` 传递。'
       parameters:
       - description: 用户登录请求
         in: body
@@ -444,11 +467,50 @@ paths:
       summary: 用户登出
       tags:
       - 用户
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 使用 refresh token 换取新的一组 access/refresh token。
+      parameters:
+      - description: 刷新 token 请求
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserRefreshReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 刷新成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserRefreshResp'
+              type: object
+        "400":
+          description: 参数校验错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: refresh token 无效
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 刷新 access token
+      tags:
+      - 用户
   /api/v1/auth/register:
     post:
       consumes:
       - application/json
-      description: 用户注册
+      description: 用户注册，成功后返回当前账号的 public_id。
       parameters:
       - description: 用户注册请求
         in: body
@@ -621,7 +683,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建一个群聊并可携带初始成员
+      description: 创建一个群聊并可携带初始成员，member_ids 使用用户 public_id。
       parameters:
       - description: 创建群聊请求
         in: body
@@ -753,7 +815,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 邀请用户加入指定群聊
+      description: 邀请用户加入指定群聊，member_ids 使用用户 public_id。
       parameters:
       - description: 群会话ID
         in: path
@@ -902,7 +964,7 @@ paths:
         name: id
         required: true
         type: integer
-      - description: 成员用户ID
+      - description: 成员用户 public_id
         in: path
         name: user_id
         required: true
@@ -992,9 +1054,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: 向指定用户发送好友申请；若存在反向待处理申请，则自动同意
+      description: 向指定 public_id 用户发送好友申请；若存在反向待处理申请，则自动同意
       parameters:
-      - description: 目标用户ID
+      - description: 目标用户 public_id
         in: path
         name: id
         required: true
@@ -1212,9 +1274,9 @@ paths:
       - 好友
   /api/v1/friends/{id}:
     delete:
-      description: 删除当前用户与指定用户的好友关系
+      description: 删除当前用户与指定 public_id 用户的好友关系
       parameters:
-      - description: 好友用户ID
+      - description: 好友用户 public_id
         in: path
         name: id
         required: true
@@ -1373,9 +1435,9 @@ paths:
       - 用户
   /api/v1/users/{id}:
     get:
-      description: 根据用户ID查询基础信息与在线状态
+      description: 根据用户 public_id 查询基础信息与在线状态
       parameters:
-      - description: 用户ID
+      - description: 用户 public_id
         in: path
         name: id
         required: true

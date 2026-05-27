@@ -46,6 +46,7 @@ type realtimeComponents struct {
 // handlers 聚合所有 HTTP/WebSocket 处理器。
 type handlers struct {
 	authHandler          *handler.AuthHandler
+	debugHandler         *handler.DebugHandler
 	wsHandler            *handler.WSHandler
 	userHandler          *handler.UserHandler
 	friendHandler        *handler.FriendHandler
@@ -110,6 +111,7 @@ func initRealtime(cfg *config.Config, repos *repositories, svcs *services) (*rea
 func initHandlers(cfg *config.Config, repos *repositories, rt *realtimeComponents, svcs *services) *handlers {
 	return &handlers{
 		authHandler:          handler.NewAuthHandler(svcs.authSvc),
+		debugHandler:         handler.NewDebugHandler(rt.hub),
 		wsHandler:            handler.NewWSHandler(rt.hub, svcs.messageSendSvc, svcs.messageSvc, svcs.conversationSvc, svcs.userSvc, cfg.JWT.Secret, repos.blacklistRepo, cfg.WS, cfg.App.Env),
 		userHandler:          handler.NewUserHandler(svcs.userSvc),
 		friendHandler:        handler.NewFriendHandler(svcs.friendSvc, svcs.userSvc),
@@ -122,6 +124,7 @@ func initHandlers(cfg *config.Config, repos *repositories, rt *realtimeComponent
 func buildRouter(hs *handlers, repos *repositories, cfg *config.Config) *gin.Engine {
 	return router.InitRouter(&router.InitRouterParams{
 		AuthHandler:          hs.authHandler,
+		DebugHandler:         hs.debugHandler,
 		WSHandler:            hs.wsHandler,
 		UserHandler:          hs.userHandler,
 		FriendHandler:        hs.friendHandler,

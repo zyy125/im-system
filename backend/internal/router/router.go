@@ -15,6 +15,7 @@ import (
 
 type InitRouterParams struct {
 	AuthHandler          *handler.AuthHandler
+	DebugHandler         *handler.DebugHandler
 	WSHandler            *handler.WSHandler
 	UserHandler          *handler.UserHandler
 	FriendHandler        *handler.FriendHandler
@@ -34,6 +35,10 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 	// Swagger 文档
 	if gin.Mode() != gin.ReleaseMode {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		if params.DebugHandler != nil {
+			debug := r.Group("/api/v1/debug")
+			debug.GET("/hub", params.DebugHandler.HubSnapshot)
+		}
 	}
 
 	authHandler := params.AuthHandler
