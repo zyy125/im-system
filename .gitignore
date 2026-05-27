@@ -1,3 +1,4 @@
+.codex
 .codex/
 .idea/
 .vscode/
@@ -5,14 +6,19 @@
 .env
 .env.*
 *.log
-*.db
-*.sqlite
 
-tmp/
-dist/
-bin/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+frontend/.env.*.local
 
+backend/bin/
+backend/dist/
+backend/tmp/
+backend/*.db
+backend/*.sqlite
 
-docs/question.md
-docs/interview-questions.md
-docs/todo.md
+backend/docs/question.md
+backend/docs/interview-questions.md
+backend/docs/todo.md

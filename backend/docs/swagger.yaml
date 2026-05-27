@@ -1,0 +1,1491 @@
+basePath: /
+definitions:
+  dto.CheckUserOnlineResp:
+    properties:
+      online:
+        type: boolean
+      user_id:
+        type: integer
+    type: object
+  dto.ConversationItemResp:
+    properties:
+      id:
+        type: integer
+      last_message:
+        $ref: '#/definitions/model.Message'
+      name:
+        type: string
+      peer:
+        $ref: '#/definitions/dto.ConversationPeerResp'
+      type:
+        $ref: '#/definitions/model.ConversationType'
+      unread_count:
+        type: integer
+    type: object
+  dto.ConversationListResp:
+    properties:
+      conversations:
+        items:
+          $ref: '#/definitions/dto.ConversationItemResp'
+        type: array
+    type: object
+  dto.ConversationPeerResp:
+    properties:
+      id:
+        type: integer
+      online:
+        type: boolean
+      username:
+        type: string
+    type: object
+  dto.CreateGroupReq:
+    properties:
+      member_ids:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  dto.FriendInfoResp:
+    properties:
+      conversation_id:
+        type: integer
+      online:
+        type: boolean
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  dto.FriendListResp:
+    properties:
+      friends:
+        items:
+          $ref: '#/definitions/dto.FriendInfoResp'
+        type: array
+    type: object
+  dto.FriendRequestItemResp:
+    properties:
+      id:
+        type: integer
+      message:
+        type: string
+      receiver:
+        $ref: '#/definitions/dto.FriendRequestUserResp'
+      requester:
+        $ref: '#/definitions/dto.FriendRequestUserResp'
+      status:
+        $ref: '#/definitions/model.FriendRequestStatus'
+    type: object
+  dto.FriendRequestListResp:
+    properties:
+      requests:
+        items:
+          $ref: '#/definitions/dto.FriendRequestItemResp'
+        type: array
+    type: object
+  dto.FriendRequestUserResp:
+    properties:
+      id:
+        type: integer
+      online:
+        type: boolean
+      username:
+        type: string
+    type: object
+  dto.GroupConversationResp:
+    properties:
+      conversation:
+        $ref: '#/definitions/dto.ConversationItemResp'
+    type: object
+  dto.GroupDetailEnvelopeResp:
+    properties:
+      group:
+        $ref: '#/definitions/dto.GroupDetailResp'
+    type: object
+  dto.GroupDetailResp:
+    properties:
+      avatar:
+        type: string
+      id:
+        type: integer
+      member_count:
+        type: integer
+      my_role:
+        $ref: '#/definitions/model.ConversationMemberRole'
+      name:
+        type: string
+      owner_id:
+        type: integer
+      status:
+        $ref: '#/definitions/model.ConversationStatus'
+    type: object
+  dto.GroupMemberListResp:
+    properties:
+      members:
+        items:
+          $ref: '#/definitions/dto.GroupMemberResp'
+        type: array
+    type: object
+  dto.GroupMemberResp:
+    properties:
+      online:
+        type: boolean
+      role:
+        $ref: '#/definitions/model.ConversationMemberRole'
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  dto.InviteGroupMembersReq:
+    properties:
+      member_ids:
+        items:
+          type: integer
+        type: array
+    required:
+    - member_ids
+    type: object
+  dto.MessageHistoryResp:
+    properties:
+      has_more:
+        type: boolean
+      messages:
+        items:
+          $ref: '#/definitions/model.Message'
+        type: array
+      next_before_seq:
+        type: integer
+    type: object
+  dto.MessageSyncResp:
+    properties:
+      has_more:
+        type: boolean
+      max_returned_seq:
+        type: integer
+      messages:
+        items:
+          $ref: '#/definitions/model.Message'
+        type: array
+    type: object
+  dto.OpenConversationResp:
+    properties:
+      conversation:
+        $ref: '#/definitions/dto.ConversationItemResp'
+    type: object
+  dto.SendFriendRequestReq:
+    properties:
+      message:
+        type: string
+    type: object
+  dto.UpdateGroupNameReq:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  dto.UserInfoResp:
+    properties:
+      id:
+        type: integer
+      online:
+        type: boolean
+      username:
+        type: string
+    type: object
+  dto.UserLoginReq:
+    properties:
+      password:
+        type: string
+      public_id:
+        type: integer
+    required:
+    - password
+    - public_id
+    type: object
+  dto.UserLoginResp:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+    type: object
+  dto.UserRegisterResp:
+    properties:
+      public_id:
+        type: integer
+    type: object
+  dto.UserRegisterReq:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  model.ConversationMemberRole:
+    enum:
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-comments:
+      ConversationMemberRoleAdmin: 管理员
+      ConversationMemberRoleMember: 普通成员
+      ConversationMemberRoleOwner: 群主
+    x-enum-descriptions:
+    - 群主
+    - 管理员
+    - 普通成员
+    x-enum-varnames:
+    - ConversationMemberRoleOwner
+    - ConversationMemberRoleAdmin
+    - ConversationMemberRoleMember
+  model.ConversationStatus:
+    enum:
+    - 1
+    - 2
+    format: int32
+    type: integer
+    x-enum-comments:
+      ConversationStatusActive: 正常
+      ConversationStatusDismissed: 已解散（群聊专用）
+    x-enum-descriptions:
+    - 正常
+    - 已解散（群聊专用）
+    x-enum-varnames:
+    - ConversationStatusActive
+    - ConversationStatusDismissed
+  model.ConversationType:
+    enum:
+    - 1
+    - 2
+    format: int32
+    type: integer
+    x-enum-comments:
+      ConversationTypeGroup: 群聊
+      ConversationTypeSingle: 单聊
+    x-enum-descriptions:
+    - 单聊
+    - 群聊
+    x-enum-varnames:
+    - ConversationTypeSingle
+    - ConversationTypeGroup
+  model.FriendRequestStatus:
+    enum:
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-comments:
+      FriendRequestAccepted: 已同意
+      FriendRequestPending: 待处理
+      FriendRequestRejected: 已拒绝
+    x-enum-descriptions:
+    - 待处理
+    - 已同意
+    - 已拒绝
+    x-enum-varnames:
+    - FriendRequestPending
+    - FriendRequestAccepted
+    - FriendRequestRejected
+  model.Message:
+    properties:
+      content:
+        type: string
+      conversation_id:
+        type: integer
+      event:
+        allOf:
+        - $ref: '#/definitions/model.MessageEvent'
+        description: 系统消息事件类型，普通文本消息为空
+      extra:
+        description: 系统消息携带的结构化附加数据
+        type: object
+      from:
+        type: integer
+      id:
+        type: integer
+      msg_id:
+        description: 客户端生成的幂等 ID，用于去重
+        type: string
+      send_time:
+        description: Unix 毫秒时间戳
+        type: integer
+      seq:
+        description: 会话内单调递增序列号，由 SeqAllocator 分配
+        type: integer
+      type:
+        $ref: '#/definitions/model.MessageType'
+    type: object
+  model.MessageEvent:
+    enum:
+    - ""
+    - group_created
+    - group_renamed
+    - group_members_joined
+    - group_member_removed
+    - group_member_left
+    - group_dismissed
+    type: string
+    x-enum-varnames:
+    - MessageEventNone
+    - MessageEventGroupCreated
+    - MessageEventGroupRenamed
+    - MessageEventGroupMembersJoined
+    - MessageEventGroupMemberRemoved
+    - MessageEventGroupMemberLeft
+    - MessageEventGroupDismissed
+  model.MessageType:
+    enum:
+    - 1
+    - 2
+    format: int32
+    type: integer
+    x-enum-comments:
+      MessageTypeSystem: 系统自动生成的事件消息（如建群、改名）
+      MessageTypeText: 用户发送的文本消息
+    x-enum-descriptions:
+    - 用户发送的文本消息
+    - 系统自动生成的事件消息（如建群、改名）
+    x-enum-varnames:
+    - MessageTypeText
+    - MessageTypeSystem
+  response.Response:
+    properties:
+      code:
+        type: string
+      data: {}
+      message:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: '单体 IM 后端 API。HTTP 受保护接口只接受 `Authorization: Bearer <token>`；WebSocket
+    握手接受 `Authorization: Bearer <token>`，并仅为浏览器兼容保留 `?token=<jwt>`。生产环境要求显式配置 `ws.allowed_origins`，运行配置新增
+    `app.http_addr`、`ws.allowed_origins`、`presence.ttl`、`presence.heartbeat_interval`。'
+  title: IM System API
+  version: "1.0"
+paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 使用 public_id 和密码登录，返回 access token 和 refresh token。后续 HTTP
+        受保护接口必须通过 `Authorization: Bearer <access_token>` 传递。
+      parameters:
+      - description: 用户登录请求
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserLoginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserLoginResp'
+              type: object
+        "400":
+          description: 参数校验错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 账号号或密码错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 用户登录
+      tags:
+      - 用户
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 用户登出，将当前 Bearer token 的 jti 加入黑名单；普通 HTTP 接口不接受 query token。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登出成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 用户登出
+      tags:
+      - 用户
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: 用户注册
+      parameters:
+      - description: 用户注册请求
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserRegisterReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 注册成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserRegisterResp'
+              type: object
+        "400":
+          description: 参数校验错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 用户注册
+      tags:
+      - 用户
+  /api/v1/conversations:
+    get:
+      description: 获取当前用户可见会话、未读数和最后一条消息摘要
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ConversationListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取会话列表
+      tags:
+      - 会话
+  /api/v1/conversations/{id}/hide:
+    post:
+      description: 将指定会话从当前用户会话列表中隐藏
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 会话成员不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 隐藏会话
+      tags:
+      - 会话
+  /api/v1/conversations/{id}/open:
+    post:
+      description: 按会话ID打开会话，不可见会话会自动恢复显示
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 打开成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.OpenConversationResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权访问该会话
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 会话或成员不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 打开会话
+      tags:
+      - 会话
+  /api/v1/conversations/groups:
+    get:
+      description: 返回当前用户仍为活跃成员的全部群聊，不受消息栏 visible 状态影响
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.ConversationListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取群聊列表
+      tags:
+      - 会话
+    post:
+      consumes:
+      - application/json
+      description: 创建一个群聊并可携带初始成员
+      parameters:
+      - description: 创建群聊请求
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateGroupReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.GroupConversationResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 群人数超限或状态冲突
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 创建群聊
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}:
+    get:
+      description: 获取指定群聊的基础信息和当前用户角色
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.GroupDetailEnvelopeResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权访问该群
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取群详情
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}/dismiss:
+    post:
+      description: 由群主解散指定群聊
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限解散
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 解散群聊
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}/invite:
+    post:
+      consumes:
+      - application/json
+      description: 邀请用户加入指定群聊
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 邀请成员请求
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.InviteGroupMembersReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限邀请
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 群人数超限或状态冲突
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 邀请成员入群
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}/leave:
+    post:
+      description: 当前用户主动退出指定群聊
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限退出
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 群主不可直接退群
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 退出群聊
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}/members:
+    get:
+      description: 获取指定群聊的当前活跃成员列表
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.GroupMemberListResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权访问该群
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取群成员列表
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}/members/{user_id}/remove:
+    post:
+      description: 将指定成员从群聊中移除
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 成员用户ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限移除
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话或成员不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 移除群成员
+      tags:
+      - 会话
+  /api/v1/conversations/groups/{id}/name:
+    post:
+      consumes:
+      - application/json
+      description: 修改群聊名称并写入系统消息
+      parameters:
+      - description: 群会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 修改群名请求
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateGroupNameReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限修改
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 群会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 修改群名称
+      tags:
+      - 会话
+  /api/v1/friend-requests/{id}:
+    post:
+      consumes:
+      - application/json
+      description: 向指定用户发送好友申请；若存在反向待处理申请，则自动同意
+      parameters:
+      - description: 目标用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 附言
+        in: body
+        name: req
+        schema:
+          $ref: '#/definitions/dto.SendFriendRequestReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 发送成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 目标用户不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 申请状态冲突
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 发送好友申请
+      tags:
+      - 好友申请
+  /api/v1/friend-requests/{id}/accept:
+    post:
+      description: 同意指定的好友申请，并建立好友关系与单聊会话
+      parameters:
+      - description: 好友申请ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 处理成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 好友申请不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 好友申请状态不合法
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 同意好友申请
+      tags:
+      - 好友申请
+  /api/v1/friend-requests/{id}/reject:
+    post:
+      description: 拒绝指定的好友申请
+      parameters:
+      - description: 好友申请ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 处理成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权限
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 好友申请不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 好友申请状态不合法
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 拒绝好友申请
+      tags:
+      - 好友申请
+  /api/v1/friend-requests/incoming:
+    get:
+      description: 返回当前用户收到的待处理好友申请列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.FriendRequestListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取收到的好友申请
+      tags:
+      - 好友申请
+  /api/v1/friend-requests/outgoing:
+    get:
+      description: 返回当前用户发出的待处理好友申请列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.FriendRequestListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取发出的好友申请
+      tags:
+      - 好友申请
+  /api/v1/friends:
+    get:
+      description: 返回当前用户的好友列表、在线状态及对应单聊会话ID
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.FriendListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取好友列表
+      tags:
+      - 好友
+  /api/v1/friends/{id}:
+    delete:
+      description: 删除当前用户与指定用户的好友关系
+      parameters:
+      - description: 好友用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 删除好友
+      tags:
+      - 好友
+  /api/v1/messages/history:
+    get:
+      description: 按会话 ID 和 before_seq 查询历史消息，返回顺序为 seq 从小到大
+      parameters:
+      - description: 会话ID
+        in: query
+        name: conversation_id
+        required: true
+        type: integer
+      - description: 返回条数上限，默认20，最大100
+        in: query
+        name: limit
+        type: integer
+      - description: 查询该seq之前的更早消息
+        in: query
+        name: before_seq
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.MessageHistoryResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权访问该会话
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取消息历史
+      tags:
+      - 消息
+  /api/v1/messages/sync:
+    get:
+      description: 按会话 ID 和 after_seq 补拉后续消息，返回顺序为 seq 从小到大
+      parameters:
+      - description: 会话ID
+        in: query
+        name: conversation_id
+        required: true
+        type: integer
+      - description: 起始seq，不返回该seq本身
+        in: query
+        name: after_seq
+        type: integer
+      - description: 返回条数上限，默认100，最大200
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 同步成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.MessageSyncResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 无权访问该会话
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 同步消息
+      tags:
+      - 消息
+  /api/v1/user/online:
+    get:
+      description: 查询当前登录用户是否在线
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.CheckUserOnlineResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 查询当前用户在线状态
+      tags:
+      - 用户
+  /api/v1/users/{id}:
+    get:
+      description: 根据用户ID查询基础信息与在线状态
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserInfoResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 用户不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取指定用户信息
+      tags:
+      - 用户
+  /api/v1/users/me:
+    get:
+      description: 返回当前登录用户的基础信息与在线状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 查询成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserInfoResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 用户不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 内部服务器错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 获取当前用户信息
+      tags:
+      - 用户
+  /api/v1/ws/:
+    get:
+      description: '建立当前用户的 WebSocket 长连接，用于实时消息与在线状态推送。优先使用 `Authorization: Bearer
+        <token>`；浏览器场景可使用 `?token=<jwt>`。生产环境会按 `ws.allowed_origins` 校验 Origin。'
+      parameters:
+      - description: Bearer JWT，优先使用
+        in: header
+        name: Authorization
+        type: string
+      - description: 仅限 WebSocket 握手使用的 JWT query token
+        in: query
+        name: token
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "101":
+          description: Switching Protocols
+          schema:
+            type: string
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Origin 不在允许列表中
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 升级连接失败
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: 建立 WebSocket 连接
+      tags:
+      - WebSocket
+securityDefinitions:
+  BearerAuth:
+    description: HTTP 受保护接口必须使用 Bearer Token；WebSocket 握手也支持该 Header。
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
