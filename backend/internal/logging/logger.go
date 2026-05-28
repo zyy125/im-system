@@ -9,6 +9,12 @@ import (
 func Setup() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.TimeKey {
+				return slog.String(slog.TimeKey, attr.Value.Time().Format("2006-01-02 15:04:05.000"))
+			}
+			return attr
+		},
 	}))
 	slog.SetDefault(logger)
 }

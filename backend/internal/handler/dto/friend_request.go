@@ -3,7 +3,8 @@ package dto
 import "github.com/zyy125/im-system/internal/model"
 
 type SendFriendRequestReq struct {
-	Message string `json:"message"`
+	Username string `json:"username" binding:"required"`
+	Message  string `json:"message"`
 }
 
 type FriendRequestUserResp struct {

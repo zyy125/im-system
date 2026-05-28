@@ -252,6 +252,45 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		assert.Equal(t, []uint64{2}, result.LatestReadState.ReadByUserIDs)
 	})
 
+	t.Run("open single conversation rejects users who are no longer friends", func(t *testing.T) {
+		key := "1:2"
+		service := NewConversationServiceWithRuntime(
+			&stubConversationRepo{
+				getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+					return model.Conversation{ID: conversationID, Type: model.ConversationTypeSingle, Status: model.ConversationStatusActive, SingleKey: &key}, nil
+				},
+				getMemberFn: func(ctx context.Context, conversationID, userID uint64) (model.ConversationMember, error) {
+					return model.ConversationMember{
+						ConversationID: conversationID,
+						UserID:         userID,
+						Status:         model.ConversationMemberStatusActive,
+						Visible:        false,
+					}, nil
+				},
+				setVisibleFn: func(ctx context.Context, conversationID, userID uint64, visible bool) error {
+					t.Fatal("conversation should not be reopened when users are not friends")
+					return nil
+				},
+			},
+			&stubMessageRepo{},
+			&stubUserRepo{},
+			&stubPresenceRepo{},
+			&stubFriendRepo{
+				areFriendsFn: func(ctx context.Context, userID, friendID uint64) (bool, error) {
+					assert.Equal(t, uint64(1), userID)
+					assert.Equal(t, uint64(2), friendID)
+					return false, nil
+				},
+			},
+			nil,
+			nil,
+		)
+
+		_, err := service.OpenConversation(ctx, 1, 12)
+		assert.Error(t, err)
+		assert.Equal(t, apperr.CodeConversationNotAccessible, apperr.CodeOf(err))
+	})
+
 	t.Run("open conversation returns latest read state for group conversation", func(t *testing.T) {
 		service := NewConversationService(
 			&stubConversationRepo{

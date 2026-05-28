@@ -75,12 +75,13 @@ func initRepositories(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *repos
 func initServices(cfg *config.Config, repos *repositories) *services {
 	seqAllocator := service.NewSeqAllocator(repos.msgRepo, repos.messageStateRepo)
 	messageSvc := service.NewMessageService(repos.msgRepo, repos.conversationRepo)
-	messageSendSvc := service.NewMessageSendService(repos.messageTxManager, seqAllocator)
+	messageSendSvc := service.NewMessageSendServiceWithFriendRepo(repos.messageTxManager, seqAllocator, repos.friendRepo)
 	conversationSvc := service.NewConversationServiceWithRuntime(
 		repos.conversationRepo,
 		repos.msgRepo,
 		repos.userRepo,
 		repos.presenceRepo,
+		repos.friendRepo,
 		repos.messageTxManager,
 		seqAllocator,
 	)

@@ -23,6 +23,7 @@ type conversationService struct {
 	messageRepo      repository.MessageRepo
 	userRepo         repository.UserRepo
 	presenceRepo     repository.PresenceRepo
+	friendRepo       repository.FriendRepo
 	txManager        repository.MessageTxManager
 	seqAllocator     SeqAllocator
 }
@@ -116,6 +117,7 @@ func NewConversationService(
 		messageRepo,
 		userRepo,
 		presenceRepo,
+		nil,
 		txManager,
 		nil,
 	)
@@ -126,6 +128,7 @@ func NewConversationServiceWithRuntime(
 	messageRepo repository.MessageRepo,
 	userRepo repository.UserRepo,
 	presenceRepo repository.PresenceRepo,
+	friendRepo repository.FriendRepo,
 	txManager repository.MessageTxManager,
 	seqAllocator SeqAllocator,
 ) ConversationService {
@@ -134,6 +137,7 @@ func NewConversationServiceWithRuntime(
 		messageRepo:      messageRepo,
 		userRepo:         userRepo,
 		presenceRepo:     presenceRepo,
+		friendRepo:       friendRepo,
 		txManager:        txManager,
 		seqAllocator:     seqAllocator,
 	}
@@ -142,6 +146,9 @@ func NewConversationServiceWithRuntime(
 func (s *conversationService) OpenConversation(ctx context.Context, userID, conversationID uint64) (OpenConversationResult, error) {
 	conv, member, err := s.requireActiveConversationMember(ctx, conversationID, userID)
 	if err != nil {
+		return OpenConversationResult{}, err
+	}
+	if err := ensureSingleConversationFriendship(ctx, s.friendRepo, conv, userID); err != nil {
 		return OpenConversationResult{}, err
 	}
 	if !member.Visible {

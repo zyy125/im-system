@@ -16,6 +16,7 @@ type MessageSendService interface {
 type messageSendService struct {
 	txManager    repository.MessageTxManager
 	seqAllocator SeqAllocator
+	friendRepo   repository.FriendRepo
 }
 
 func NewMessageSendService(
@@ -25,6 +26,18 @@ func NewMessageSendService(
 	return &messageSendService{
 		txManager:    txManager,
 		seqAllocator: seqAllocator,
+	}
+}
+
+func NewMessageSendServiceWithFriendRepo(
+	txManager repository.MessageTxManager,
+	seqAllocator SeqAllocator,
+	friendRepo repository.FriendRepo,
+) MessageSendService {
+	return &messageSendService{
+		txManager:    txManager,
+		seqAllocator: seqAllocator,
+		friendRepo:   friendRepo,
 	}
 }
 
@@ -60,6 +73,9 @@ func (s *messageSendService) SendTextMessage(ctx context.Context, senderID, conv
 		}
 		if !conv.IsActive() {
 			return apperr.ConversationDismissed()
+		}
+		if err := ensureSingleConversationFriendship(ctx, s.friendRepo, conv, senderID); err != nil {
+			return err
 		}
 
 		member, err := conversationRepo.GetMember(ctx, conversationID, senderID)

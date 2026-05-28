@@ -87,13 +87,14 @@
 
 - `GET /api/v1/friends`
 - `DELETE /api/v1/friends/:id`
-- `POST /api/v1/friend-requests/:id`
+- `POST /api/v1/friend-requests`
+  - 请求：`{ username, message }`
 - `GET /api/v1/friend-requests/incoming`
 - `GET /api/v1/friend-requests/outgoing`
 - `POST /api/v1/friend-requests/:id/accept`
 - `POST /api/v1/friend-requests/:id/reject`
 
-这里的 `:id` 都是 `user_id` 或申请单据 `id`，按接口语义区分，不存在 `public_id`。
+这里的 `:id` 在好友申请 accept/reject 场景里都是申请单据 `id`；发送好友申请时目标用户通过 `username` 传递，不存在 `public_id`。
 
 ### 3.4 会话与群组
 

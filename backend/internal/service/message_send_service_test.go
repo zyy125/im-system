@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zyy125/im-system/internal/apperr"
 	"github.com/zyy125/im-system/internal/model"
 )
 
@@ -72,4 +73,37 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 	assert.Equal(t, uint64(12), lastSentConversationID)
 	assert.Equal(t, uint64(9), lastSentUserID)
 	assert.Equal(t, uint64(7), lastSentSeq)
+}
+
+func TestMessageSendService_SendTextMessageRejectsSingleConversationWhenNotFriends(t *testing.T) {
+	ctx := context.Background()
+
+	service := NewMessageSendServiceWithFriendRepo(
+		&stubMessageTxManager{
+			messageRepo: &stubMessageRepo{
+				createFn: func(ctx context.Context, msg *model.Message) error {
+					t.Fatal("message should not be persisted when friendship is gone")
+					return nil
+				},
+			},
+			conversationRepo: &stubConversationRepo{
+				getByIDFn: func(ctx context.Context, conversationID uint64) (model.Conversation, error) {
+					key := "9:10"
+					return model.Conversation{ID: conversationID, Type: model.ConversationTypeSingle, Status: model.ConversationStatusActive, SingleKey: &key}, nil
+				},
+			},
+		},
+		fixedSeqAllocator(7),
+		&stubFriendRepo{
+			areFriendsFn: func(ctx context.Context, userID, friendID uint64) (bool, error) {
+				assert.Equal(t, uint64(9), userID)
+				assert.Equal(t, uint64(10), friendID)
+				return false, nil
+			},
+		},
+	)
+
+	_, _, err := service.SendTextMessage(ctx, 9, 12, "m1", "hello")
+	require.Error(t, err)
+	assert.Equal(t, apperr.CodeConversationNotAccessible, apperr.CodeOf(err))
 }

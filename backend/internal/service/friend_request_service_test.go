@@ -10,6 +10,59 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestFriendRequestService_SendByUsername(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("resolves username then reuses send flow", func(t *testing.T) {
+		repo := &stubFriendRequestRepo{}
+		friendRepo := &stubFriendRepo{}
+		userRepo := &stubUserRepo{}
+		conversationRepo := &stubConversationRepo{}
+
+		userRepo.getByUsernameFn = func(ctx context.Context, username string) (model.User, error) {
+			assert.Equal(t, "bob", username)
+			return model.User{ID: 2, Username: "bob"}, nil
+		}
+		userRepo.getByIDFn = func(ctx context.Context, id uint64) (model.User, error) {
+			return model.User{ID: id, Username: "u"}, nil
+		}
+		friendRepo.areFriendsFn = func(ctx context.Context, userID, friendID uint64) (bool, error) {
+			assert.Equal(t, uint64(1), userID)
+			assert.Equal(t, uint64(2), friendID)
+			return false, nil
+		}
+		repo.findPendingBetweenFn = func(ctx context.Context, requesterID, receiverID uint64) (model.FriendRequest, error) {
+			return model.FriendRequest{}, gorm.ErrRecordNotFound
+		}
+		repo.createFn = func(ctx context.Context, req *model.FriendRequest) error {
+			assert.Equal(t, uint64(1), req.RequesterID)
+			assert.Equal(t, uint64(2), req.ReceiverID)
+			assert.Equal(t, "hi", req.Message)
+			return nil
+		}
+
+		friendService := NewFriendService(friendRepo, userRepo, &stubPresenceRepo{}, conversationRepo)
+		service := NewFriendRequestService(repo, friendService, userRepo, &stubPresenceRepo{})
+
+		result, err := service.SendByUsername(ctx, 1, "  bob  ", "hi")
+		assert.NoError(t, err)
+		assert.Equal(t, "pending", result)
+	})
+
+	t.Run("returns user not found when username missing", func(t *testing.T) {
+		userRepo := &stubUserRepo{
+			getByUsernameFn: func(ctx context.Context, username string) (model.User, error) {
+				return model.User{}, gorm.ErrRecordNotFound
+			},
+		}
+		service := NewFriendRequestService(&stubFriendRequestRepo{}, NewFriendService(&stubFriendRepo{}, userRepo, &stubPresenceRepo{}, &stubConversationRepo{}), userRepo, &stubPresenceRepo{})
+
+		_, err := service.SendByUsername(ctx, 1, "ghost", "hi")
+		assert.Error(t, err)
+		assert.Equal(t, apperr.CodeUserNotFound, apperr.CodeOf(err))
+	})
+}
+
 func TestFriendRequestService_SendAutoAcceptedOnReversePending(t *testing.T) {
 	ctx := context.Background()
 	repo := &stubFriendRequestRepo{}
@@ -127,3 +180,4 @@ func TestFriendRequestService_ListIncomingFiltersExistingFriends(t *testing.T) {
 	assert.True(t, items[0].Requester.Online)
 	assert.Equal(t, "bob", items[0].Receiver.Username)
 }
+

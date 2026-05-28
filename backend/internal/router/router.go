@@ -95,7 +95,7 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 
 		friendRequests := api.Group("/friend-requests", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))
 		{
-			friendRequests.POST("/:id", friendRequestHandler.Send)
+			friendRequests.POST("", friendRequestHandler.Send)
 			friendRequests.GET("/incoming", friendRequestHandler.Incoming)
 			friendRequests.GET("/outgoing", friendRequestHandler.Outgoing)
 			friendRequests.POST("/:id/accept", friendRequestHandler.Accept)

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/zyy125/im-system/internal/apperr"
 	"github.com/zyy125/im-system/internal/model"
@@ -33,6 +34,7 @@ type friendRequestService struct {
 }
 
 type FriendRequestService interface {
+	SendByUsername(ctx context.Context, requesterID uint64, username, message string) (string, error)
 	Send(ctx context.Context, requesterID, receiverID uint64, message string) (string, error)
 	Accept(ctx context.Context, userID, requestID uint64) error
 	Reject(ctx context.Context, userID, requestID uint64) error
@@ -54,6 +56,22 @@ func NewFriendRequestService(
 		userRepo:          userRepo,
 		presenceRepo:      presenceRepo,
 	}
+}
+
+func (s *friendRequestService) SendByUsername(ctx context.Context, requesterID uint64, username, message string) (string, error) {
+	username = strings.TrimSpace(username)
+	if requesterID == 0 || username == "" {
+		return "", apperr.Required("requester_id", "username")
+	}
+
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", apperr.UserNotFound()
+		}
+		return "", err
+	}
+	return s.Send(ctx, requesterID, user.ID, message)
 }
 
 func (s *friendRequestService) Send(ctx context.Context, requesterID, receiverID uint64, message string) (string, error) {

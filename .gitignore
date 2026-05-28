@@ -18,6 +18,8 @@ backend/dist/
 backend/tmp/
 backend/*.db
 backend/*.sqlite
+backend/storage/
+backend/internal/e2e/storage/
 
 backend/docs/question.md
 backend/docs/interview-questions.md

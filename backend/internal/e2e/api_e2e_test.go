@@ -168,10 +168,10 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	seqAllocator := service.NewSeqAllocator(messageRepo, messageStateRepo)
 	userSvc := service.NewUserService(userRepo, presenceRepo)
-	conversationSvc := service.NewConversationServiceWithRuntime(conversationRepo, messageRepo, userRepo, presenceRepo, messageTxManager, seqAllocator)
+	conversationSvc := service.NewConversationServiceWithRuntime(conversationRepo, messageRepo, userRepo, presenceRepo, friendRepo, messageTxManager, seqAllocator)
 	friendSvc := service.NewFriendService(friendRepo, userRepo, presenceRepo, conversationRepo)
 	messageSvc := service.NewMessageService(messageRepo, conversationRepo)
-	messageSendSvc := service.NewMessageSendService(messageTxManager, seqAllocator)
+	messageSendSvc := service.NewMessageSendServiceWithFriendRepo(messageTxManager, seqAllocator, friendRepo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	hub := ws.NewHub(presenceRepo, conversationSvc, friendRepo, userSvc)
@@ -337,7 +337,8 @@ func TestGolden_FriendRequestAndAccept(t *testing.T) {
 	aliceID, aliceToken := registerAndLogin(t, env, "alice", "secret123")
 	bobID, bobToken := registerAndLogin(t, env, "bob", "secret123")
 
-	resp := doJSON(t, env, http.MethodPost, "/api/v1/friend-requests/"+uintToString(bobID), aliceToken, map[string]any{
+	resp := doJSON(t, env, http.MethodPost, "/api/v1/friend-requests", aliceToken, map[string]any{
+		"username": "bob",
 		"message": "hi bob",
 	})
 	assert.Equal(t, "ok", resp.Code)
@@ -382,7 +383,7 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 
 	aliceID, aliceToken := registerAndLogin(t, env, "alice", "secret123")
 	bobID, bobToken := registerAndLogin(t, env, "bob", "secret123")
-	makeFriends(t, env, aliceToken, bobToken, bobID)
+	makeFriends(t, env, aliceToken, bobToken, "bob")
 
 	friendsResp := doJSON(t, env, http.MethodGet, "/api/v1/friends", aliceToken, nil)
 	var friendsBody dto.FriendListResp
@@ -570,10 +571,11 @@ func registerAndLogin(t *testing.T, env *testEnv, username, password string) (ui
 	return meBody.UserID, login.AccessToken
 }
 
-func makeFriends(t *testing.T, env *testEnv, requesterToken, receiverToken string, receiverID uint64) {
+func makeFriends(t *testing.T, env *testEnv, requesterToken, receiverToken, receiverUsername string) {
 	t.Helper()
 
-	resp := doJSON(t, env, http.MethodPost, "/api/v1/friend-requests/"+uintToString(receiverID), requesterToken, map[string]any{
+	resp := doJSON(t, env, http.MethodPost, "/api/v1/friend-requests", requesterToken, map[string]any{
+		"username": receiverUsername,
 		"message": "let's chat",
 	})
 	assert.Equal(t, "ok", resp.Code)
