@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -152,6 +153,10 @@ func newTestEnv(t *testing.T) *testEnv {
 			Env:      "test",
 			HTTPAddr: ":0",
 		},
+		Storage: config.Storage{
+			AvatarDir:        "./storage/avatars",
+			AvatarPublicBase: "/uploads/avatars",
+		},
 		JWT: config.JWT{
 			Secret:        "test-secret",
 			AccessExpiry:  24,
@@ -174,6 +179,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	engine := router.InitRouter(&router.InitRouterParams{
 		AuthHandler:          handler.NewAuthHandler(service.NewAuthService(userRepo, &cfg.JWT, blacklistRepo, refreshSessionRepo)),
+		AvatarHandler:        handler.NewAvatarHandler(userSvc),
 		WSHandler:            handler.NewWSHandler(hub, messageSendSvc, messageSvc, conversationSvc, userSvc, cfg.JWT.Secret, blacklistRepo, cfg.WS, cfg.App.Env),
 		UserHandler:          handler.NewUserHandler(userSvc),
 		FriendHandler:        handler.NewFriendHandler(friendSvc, userSvc),
@@ -214,6 +220,46 @@ func TestGolden_RegisterAndLogin(t *testing.T) {
 	assert.Equal(t, userID, me.PublicID)
 	assert.Equal(t, "alice", me.Username)
 	assert.False(t, me.Online)
+}
+
+func TestGolden_UploadAvatarAndReadBackUserInfo(t *testing.T) {
+	env := newTestEnv(t)
+
+	_, token := registerAndLogin(t, env, "alice", "secret123")
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "avatar.png")
+	require.NoError(t, err)
+	_, err = fileWriter.Write([]byte("fake image content"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req, err := http.NewRequestWithContext(env.ctx, http.MethodPost, env.server.URL+"/api/v1/users/avatar", &body)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := env.server.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var upload apiResponse
+	require.NoError(t, json.Unmarshal(raw, &upload), string(raw))
+	assert.Equal(t, "ok", upload.Code)
+
+	var avatarBody dto.UserAvatarResp
+	decodeData(t, upload, &avatarBody)
+	require.NotEmpty(t, avatarBody.Avatar)
+	assert.True(t, strings.HasPrefix(avatarBody.Avatar, "/uploads/avatars/"))
+
+	meResp := doJSON(t, env, http.MethodGet, "/api/v1/users/me", token, nil)
+	assert.Equal(t, "ok", meResp.Code)
+	var me dto.UserInfoResp
+	decodeData(t, meResp, &me)
+	assert.Equal(t, avatarBody.Avatar, me.Avatar)
 }
 
 func TestGolden_DuplicateUsernameUsesDistinctPublicIDLogin(t *testing.T) {

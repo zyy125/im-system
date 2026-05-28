@@ -98,6 +98,7 @@ func queryInt(c *gin.Context, key string, defaultValue int) int {
 func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 	return dto.UserInfoResp{
 		PublicID: user.PublicID,
+		Avatar:   user.Avatar,
 		Username: user.Username,
 		Online:   online,
 	}
@@ -106,6 +107,7 @@ func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 	return dto.FriendInfoResp{
 		PublicID:       friend.UserID,
+		Avatar:         friend.Avatar,
 		Username:       friend.Username,
 		Online:         friend.Online,
 		ConversationID: friend.ConversationID,
@@ -115,6 +117,7 @@ func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 func buildFriendRequestUserResp(user service.FriendRequestUser) dto.FriendRequestUserResp {
 	return dto.FriendRequestUserResp{
 		PublicID: user.ID,
+		Avatar:   user.Avatar,
 		Username: user.Username,
 		Online:   user.Online,
 	}
@@ -130,6 +133,7 @@ func buildConversationItemResp(conversation service.ConversationSummary) dto.Con
 	if conversation.Peer != nil {
 		item.Peer = &dto.ConversationPeerResp{
 			PublicID: conversation.Peer.ID,
+			Avatar:   conversation.Peer.Avatar,
 			Username: conversation.Peer.Username,
 			Online:   conversation.Peer.Online,
 		}

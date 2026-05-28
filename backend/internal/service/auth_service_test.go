@@ -39,6 +39,14 @@ func (m *MockAuthRepo) Create(ctx context.Context, user *model.User) error {
 	return nil
 }
 
+func (m *MockAuthRepo) Update(ctx context.Context, user *model.User) error {
+	if user == nil {
+		return nil
+	}
+	m.users[user.PublicID] = user
+	return nil
+}
+
 func (m *MockAuthRepo) GetByID(ctx context.Context, id uint64) (model.User, error) {
 	for _, u := range m.users {
 		if u.ID == id {

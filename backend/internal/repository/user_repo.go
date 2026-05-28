@@ -12,6 +12,7 @@ type UserRepo interface {
 	GetByID(ctx context.Context, id uint64) (model.User, error)
 	GetByPublicID(ctx context.Context, publicID uint64) (model.User, error)
 	ListByIDs(ctx context.Context, ids []uint64) ([]model.User, error)
+	Update(ctx context.Context, user *model.User) error
 }
 
 type userRepo struct {
@@ -41,4 +42,11 @@ func (r *userRepo) ListByIDs(ctx context.Context, ids []uint64) ([]model.User, e
 		return []model.User{}, nil
 	}
 	return gorm.G[model.User](r.db).Where("id IN ?", ids).Find(ctx)
+}
+
+func (r *userRepo) Update(ctx context.Context, user *model.User) error {
+	if user == nil {
+		return nil
+	}
+	return r.db.WithContext(ctx).Save(user).Error
 }

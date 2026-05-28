@@ -12,6 +12,10 @@ http:
     - "http://localhost:4174"
     - "http://127.0.0.1:4174"
 
+storage:
+  avatar_dir: "./storage/avatars"
+  avatar_public_base: "/uploads/avatars"
+
 redis:
   addr: "localhost:6379"
   password: ""

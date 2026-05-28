@@ -9,6 +9,7 @@ import (
 
 type stubUserRepo struct {
 	createFn        func(ctx context.Context, user *model.User) error
+	updateFn        func(ctx context.Context, user *model.User) error
 	getByIDFn       func(ctx context.Context, id uint64) (model.User, error)
 	getByPublicIDFn func(ctx context.Context, publicID uint64) (model.User, error)
 	listByIDsFn     func(ctx context.Context, ids []uint64) ([]model.User, error)
@@ -17,6 +18,13 @@ type stubUserRepo struct {
 func (s *stubUserRepo) Create(ctx context.Context, user *model.User) error {
 	if s.createFn != nil {
 		return s.createFn(ctx, user)
+	}
+	return nil
+}
+
+func (s *stubUserRepo) Update(ctx context.Context, user *model.User) error {
+	if s.updateFn != nil {
+		return s.updateFn(ctx, user)
 	}
 	return nil
 }

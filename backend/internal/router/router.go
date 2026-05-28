@@ -15,6 +15,7 @@ import (
 
 type InitRouterParams struct {
 	AuthHandler          *handler.AuthHandler
+	AvatarHandler        *handler.AvatarHandler
 	DebugHandler         *handler.DebugHandler
 	WSHandler            *handler.WSHandler
 	UserHandler          *handler.UserHandler
@@ -27,6 +28,7 @@ type InitRouterParams struct {
 	AppCfg        *config.App
 	HTTPCfg       *config.HTTP
 	JwtCfg        *config.JWT
+	StorageCfg    *config.Storage
 }
 
 func InitRouter(params *InitRouterParams) *gin.Engine {
@@ -36,6 +38,9 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 	}
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.Recovery())
+	if params.StorageCfg != nil && params.StorageCfg.AvatarPublicBase != "" && params.StorageCfg.AvatarDir != "" {
+		r.Static(params.StorageCfg.AvatarPublicBase, params.StorageCfg.AvatarDir)
+	}
 
 	// Swagger 文档
 	if gin.Mode() != gin.ReleaseMode {
@@ -47,6 +52,7 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 	}
 
 	authHandler := params.AuthHandler
+	avatarHandler := params.AvatarHandler
 	blacklistRepo := params.BlacklistRepo
 	jwtCfg := params.JwtCfg
 	wsHandler := params.WSHandler
@@ -75,6 +81,10 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 		{
 			users.GET("/me", userHandler.GetMe)
 			users.GET("/:id", userHandler.GetUserInfo)
+			if avatarHandler != nil {
+				users.POST("/avatar", avatarHandler.UploadAvatar)
+				users.DELETE("/avatar", avatarHandler.ClearAvatar)
+			}
 		}
 
 		friends := api.Group("/friends", middleware.AuthMiddleware(jwtCfg.Secret, blacklistRepo))

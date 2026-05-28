@@ -71,6 +71,7 @@ type ConversationSummary struct {
 
 type ConversationPeer struct {
 	ID       uint64
+	Avatar   string
 	Username string
 	Online   bool
 }
@@ -97,6 +98,7 @@ type GroupDetail struct {
 
 type GroupMember struct {
 	UserID   uint64
+	Avatar   string
 	Username string
 	Role     model.ConversationMemberRole
 	Online   bool
@@ -279,6 +281,7 @@ func (s *conversationService) ListGroupMembers(ctx context.Context, userID, conv
 	for _, user := range users {
 		items = append(items, GroupMember{
 			UserID:   user.PublicID,
+			Avatar:   user.Avatar,
 			Username: user.Username,
 			Role:     roleByUser[user.ID],
 			Online:   onlineByUserID[user.ID],
@@ -776,6 +779,7 @@ func (s *conversationService) buildConversationSummaries(
 			}
 			item.Peer = &ConversationPeer{
 				ID:       user.PublicID,
+				Avatar:   user.Avatar,
 				Username: user.Username,
 				Online:   onlineByUserID[user.ID],
 			}

@@ -7,6 +7,7 @@ type User struct {
 	ID        uint64    `gorm:"primaryKey"`
 	PublicID  uint64    `gorm:"uniqueIndex;not null"`
 	Username  string    `gorm:"size:64;not null;index"`
+	Avatar    string    `gorm:"size:255;not null;default:''"`
 	Password  string    `gorm:"size:255;not null" json:"-"` // bcrypt 哈希，不对外暴露
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`

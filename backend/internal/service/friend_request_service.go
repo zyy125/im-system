@@ -20,6 +20,7 @@ type FriendRequestSummary struct {
 
 type FriendRequestUser struct {
 	ID       uint64
+	Avatar   string
 	Username string
 	Online   bool
 }
@@ -216,6 +217,7 @@ func (s *friendRequestService) buildUser(ctx context.Context, userID uint64) (Fr
 	}
 	return FriendRequestUser{
 		ID:       user.PublicID,
+		Avatar:   user.Avatar,
 		Username: user.Username,
 		Online:   online,
 	}, nil

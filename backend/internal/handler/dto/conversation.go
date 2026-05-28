@@ -4,6 +4,7 @@ import "github.com/zyy125/im-system/internal/model"
 
 type ConversationPeerResp struct {
 	PublicID uint64 `json:"public_id"`
+	Avatar   string `json:"avatar"`
 	Username string `json:"username"`
 	Online   bool   `json:"online"`
 }
@@ -49,6 +50,7 @@ type GroupDetailResp struct {
 
 type GroupMemberResp struct {
 	PublicID uint64                       `json:"public_id"`
+	Avatar   string                       `json:"avatar"`
 	Username string                       `json:"username"`
 	Role     model.ConversationMemberRole `json:"role"`
 	Online   bool                         `json:"online"`

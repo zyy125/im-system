@@ -14,6 +14,7 @@ import (
 type Config struct {
 	App      App      `mapstructure:"app"`
 	HTTP     HTTP     `mapstructure:"http"`
+	Storage  Storage  `mapstructure:"storage"`
 	Mysql    Mysql    `mapstructure:"mysql"`
 	Redis    Redis    `mapstructure:"redis"`
 	JWT      JWT      `mapstructure:"jwt"`
@@ -29,6 +30,11 @@ type App struct {
 
 type HTTP struct {
 	AllowedOrigins []string `mapstructure:"allowed_origins"`
+}
+
+type Storage struct {
+	AvatarDir        string `mapstructure:"avatar_dir"`
+	AvatarPublicBase string `mapstructure:"avatar_public_base"`
 }
 
 // Mysql 保存 MySQL 连接串。
@@ -126,6 +132,14 @@ func (c *Config) Validate() error {
 	if c.Presence.HeartbeatInterval >= c.Presence.TTL {
 		return errors.New("presence.heartbeat_interval must be smaller than presence.ttl")
 	}
+	if strings.TrimSpace(c.Storage.AvatarDir) == "" {
+		c.Storage.AvatarDir = "./storage/avatars"
+	}
+	c.Storage.AvatarDir = strings.TrimSpace(c.Storage.AvatarDir)
+	if strings.TrimSpace(c.Storage.AvatarPublicBase) == "" {
+		c.Storage.AvatarPublicBase = "/uploads/avatars"
+	}
+	c.Storage.AvatarPublicBase = normalizePublicBase(c.Storage.AvatarPublicBase)
 	if c.App.Env == "production" && len(c.HTTP.AllowedOrigins) == 0 {
 		return errors.New("http.allowed_origins is required in production")
 	}
@@ -152,4 +166,19 @@ func normalizeEnv(env string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(env))
 	}
+}
+
+func normalizePublicBase(base string) string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return "/uploads/avatars"
+	}
+	if !strings.HasPrefix(base, "/") {
+		base = "/" + base
+	}
+	base = strings.TrimRight(base, "/")
+	if base == "" {
+		return "/uploads/avatars"
+	}
+	return base
 }

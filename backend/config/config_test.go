@@ -11,6 +11,7 @@ func TestConfigValidate(t *testing.T) {
 			Env:      "development",
 			HTTPAddr: ":8080",
 		},
+		Storage: Storage{},
 		Mysql: Mysql{DSN: "root:pass@tcp(localhost:3306)/im"},
 		Redis: Redis{Addr: "localhost:6379"},
 		JWT: JWT{
@@ -26,6 +27,12 @@ func TestConfigValidate(t *testing.T) {
 
 	if err := base.Validate(); err != nil {
 		t.Fatalf("expected config to be valid, got %v", err)
+	}
+	if base.Storage.AvatarDir == "" {
+		t.Fatalf("expected avatar dir default to be set")
+	}
+	if base.Storage.AvatarPublicBase == "" {
+		t.Fatalf("expected avatar public base default to be set")
 	}
 
 	production := *base

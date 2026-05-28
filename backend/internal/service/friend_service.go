@@ -83,6 +83,7 @@ func (s *friendService) AreFriends(ctx context.Context, userID, friendID uint64)
 
 type FriendInfo struct {
 	UserID         uint64
+	Avatar         string
 	Username       string
 	Online         bool
 	ConversationID uint64
@@ -128,6 +129,7 @@ func (s *friendService) ListFriends(ctx context.Context, userID uint64) ([]Frien
 		}
 		res = append(res, FriendInfo{
 			UserID:         friendUser.PublicID,
+			Avatar:         friendUser.Avatar,
 			Username:       item.Username,
 			Online:         online,
 			ConversationID: conversationID,
