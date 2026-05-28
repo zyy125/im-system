@@ -51,12 +51,6 @@ type SyncRequiredData struct {
 	Reason         string `json:"reason"`
 }
 
-type MessageDeliveredData struct {
-	ConversationID uint64 `json:"conversation_id"`
-	UserID         uint64 `json:"user_id"`
-	DeliveredSeq   uint64 `json:"delivered_seq"`
-}
-
 type MessageReadData struct {
 	ConversationID uint64 `json:"conversation_id"`
 	UserID         uint64 `json:"user_id"`

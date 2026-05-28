@@ -428,8 +428,6 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 			"delivered_seq":   delivered.Seq,
 		},
 	}))
-	deliveryReceipt := readDeliveryReceipt(t, aliceConn, openBody.Conversation.ID, bobID, delivered.Seq, 5*time.Second)
-	assert.Equal(t, delivered.Seq, deliveryReceipt.DeliveredSeq)
 
 	require.NoError(t, bobConn.WriteJSON(map[string]any{
 		"type": ws.EventTypeMessageRead,
@@ -622,32 +620,6 @@ func readMessageEvent(t *testing.T, conn *websocket.Conn, wantType, wantMsgID st
 
 	t.Fatalf("message %s type %s not received before timeout", wantMsgID, wantType)
 	return dto.MessageResp{}
-}
-
-func readDeliveryReceipt(t *testing.T, conn *websocket.Conn, conversationID, userID, deliveredSeq uint64, timeout time.Duration) ws.MessageDeliveredData {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		require.NoError(t, conn.SetReadDeadline(deadline))
-		_, payload, err := conn.ReadMessage()
-		require.NoError(t, err)
-
-		var env ws.Envelope
-		require.NoError(t, json.Unmarshal(payload, &env))
-		if env.Type != ws.EventTypeMessageDelivered {
-			continue
-		}
-
-		var receipt ws.MessageDeliveredData
-		require.NoError(t, json.Unmarshal(env.Data, &receipt))
-		if receipt.ConversationID == conversationID && receipt.UserID == userID && receipt.DeliveredSeq == deliveredSeq {
-			return receipt
-		}
-	}
-
-	t.Fatalf("delivery receipt conversation=%d user=%d seq=%d not received before timeout", conversationID, userID, deliveredSeq)
-	return ws.MessageDeliveredData{}
 }
 
 func doJSON(t *testing.T, env *testEnv, method, path, token string, body any) apiResponse {

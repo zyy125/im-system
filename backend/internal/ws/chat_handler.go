@@ -87,19 +87,10 @@ func (h *messageAckHandler) HandleMessageDelivered(ctx context.Context, userID u
 	if h.messageReceiptService == nil {
 		return nil, apperr.Internal("message service unavailable", nil)
 	}
-	recipients, err := h.messageReceiptService.MarkDelivered(ctx, userID, req.ConversationID, req.DeliveredSeq)
-	if err != nil {
+	if _, err := h.messageReceiptService.MarkDelivered(ctx, userID, req.ConversationID, req.DeliveredSeq); err != nil {
 		return nil, err
 	}
-	payload, err := MarshalEnvelope(EventTypeMessageDelivered, MessageDeliveredData{
-		ConversationID: req.ConversationID,
-		UserID:         userID,
-		DeliveredSeq:   req.DeliveredSeq,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return buildReceiptForwards(req.ConversationID, recipients, payload), nil
+	return nil, nil
 }
 
 func (h *messageAckHandler) HandleMessageRead(ctx context.Context, userID uint64, req ClientMessageRead) ([]*ForwardMessage, error) {

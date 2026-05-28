@@ -53,6 +53,7 @@
 - 表示客户端已经确认收到该会话内的 `delivered_seq`。
 - 服务端单调推进 `conversation_members.last_acked_msg_seq`。
 - `delivered_seq` 不能超过当前会话 MySQL 已提交的最大 `seq`。
+- 该事件只作为客户端上行 ACK 使用，服务端不会再下发 `message.delivered` 推送。
 
 ### message.read
 
@@ -99,21 +100,6 @@
 ```
 
 `seq` 是唯一业务游标，history、sync、离线补推、delivered、read 都基于它。
-
-### message.delivered
-
-```json
-{
-  "type": "message.delivered",
-  "data": {
-    "conversation_id": 1,
-    "user_id": 100000010,
-    "delivered_seq": 123
-  }
-}
-```
-
-服务端在接收确认成功后向会话在线成员广播该回执。
 
 ### message.read
 
@@ -163,5 +149,6 @@
 - 本地发送后先标记 `sending`，收到 `message.sent` 后标记 `sent`。
 - 收到 `message.created` 后按会话内单调递增的 `seq` 维护本地游标，并发送 `message.delivered`。
 - 只有用户实际读到消息时才发送 `message.read`。
+- 前端不要等待 `message.delivered` 下行事件；服务端只持久化 ACK，不再回推送达回执。
 - 缺口补拉使用 `/api/v1/messages/sync?conversation_id=...&after_seq=...`。
 - 不使用 `id`、`send_time`、`msg_id` 作为范围游标。
