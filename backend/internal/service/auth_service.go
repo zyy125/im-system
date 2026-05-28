@@ -30,12 +30,13 @@ type AuthTokens struct {
 }
 
 type RegisterResult struct {
-	PublicID uint64
+	UserID   uint64
+	Username string
 }
 
 type AuthService interface {
 	Register(ctx context.Context, username, password string) (RegisterResult, error)
-	Login(ctx context.Context, publicID uint64, password string) (AuthTokens, error)
+	Login(ctx context.Context, username, password string) (AuthTokens, error)
 	Refresh(ctx context.Context, refreshToken string) (AuthTokens, error)
 	Logout(ctx context.Context, jti, sessionID string, expiresAt time.Time) error
 }
@@ -61,40 +62,41 @@ func (s *authService) Register(ctx context.Context, username, password string) (
 	if username == "" || password == "" {
 		return RegisterResult{}, apperr.CredentialsRequired()
 	}
+	if _, err := s.userRepo.GetByUsername(ctx, username); err == nil {
+		return RegisterResult{}, apperr.InvalidArgument("username already exists")
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return RegisterResult{}, err
+	}
 	hash, err := utils.HashPassword(password)
 	if err != nil {
 		return RegisterResult{}, err
 	}
-	for range 10 {
-		publicID, err := utils.GeneratePublicID()
-		if err != nil {
-			return RegisterResult{}, err
-		}
-
-		if err := s.userRepo.Create(ctx, &model.User{
-			PublicID: publicID,
-			Username: username,
-			Password: hash,
-		}); err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
-				continue
-			}
-			return RegisterResult{}, err
-		}
-		return RegisterResult{PublicID: publicID}, nil
+	user := model.User{
+		Username: username,
+		Password: hash,
 	}
-	return RegisterResult{}, apperr.Internal("failed to allocate public id", nil)
+	if err := s.userRepo.Create(ctx, &user); err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return RegisterResult{}, apperr.InvalidArgument("username already exists")
+		}
+		return RegisterResult{}, err
+	}
+	return RegisterResult{
+		UserID:   user.ID,
+		Username: user.Username,
+	}, nil
 }
 
-func (s *authService) Login(ctx context.Context, publicID uint64, password string) (AuthTokens, error) {
-	if publicID == 0 || password == "" {
+func (s *authService) Login(ctx context.Context, username, password string) (AuthTokens, error) {
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
 		return AuthTokens{}, apperr.CredentialsRequired()
 	}
 	if s.refreshSessionRepo == nil || s.jwtConfig == nil {
 		return AuthTokens{}, apperr.Internal("auth service unavailable", nil)
 	}
 
-	user, err := s.userRepo.GetByPublicID(ctx, publicID)
+	user, err := s.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return AuthTokens{}, apperr.InvalidCredentials()

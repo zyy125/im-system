@@ -6,7 +6,7 @@ type UserRegisterReq struct {
 }
 
 type UserLoginReq struct {
-	PublicID uint64 `json:"public_id" binding:"required"`
+	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -17,7 +17,8 @@ type UserLoginResp struct {
 }
 
 type UserRegisterResp struct {
-	PublicID uint64 `json:"public_id"`
+	UserID   uint64 `json:"user_id"`
+	Username string `json:"username"`
 }
 
 type UserRefreshReq struct {

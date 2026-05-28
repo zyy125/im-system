@@ -11,7 +11,7 @@ type stubUserRepo struct {
 	createFn        func(ctx context.Context, user *model.User) error
 	updateFn        func(ctx context.Context, user *model.User) error
 	getByIDFn       func(ctx context.Context, id uint64) (model.User, error)
-	getByPublicIDFn func(ctx context.Context, publicID uint64) (model.User, error)
+	getByUsernameFn func(ctx context.Context, username string) (model.User, error)
 	listByIDsFn     func(ctx context.Context, ids []uint64) ([]model.User, error)
 }
 
@@ -36,9 +36,9 @@ func (s *stubUserRepo) GetByID(ctx context.Context, id uint64) (model.User, erro
 	return model.User{}, nil
 }
 
-func (s *stubUserRepo) GetByPublicID(ctx context.Context, publicID uint64) (model.User, error) {
-	if s.getByPublicIDFn != nil {
-		return s.getByPublicIDFn(ctx, publicID)
+func (s *stubUserRepo) GetByUsername(ctx context.Context, username string) (model.User, error) {
+	if s.getByUsernameFn != nil {
+		return s.getByUsernameFn(ctx, username)
 	}
 	return model.User{}, nil
 }

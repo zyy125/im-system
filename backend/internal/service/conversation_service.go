@@ -246,7 +246,7 @@ func (s *conversationService) GetGroupDetail(ctx context.Context, userID, conver
 		ID:          conv.ID,
 		Name:        conv.Name,
 		Avatar:      conv.Avatar,
-		OwnerID:     owner.PublicID,
+		OwnerID:     owner.ID,
 		Status:      conv.Status,
 		MyRole:      member.Role,
 		MemberCount: count,
@@ -280,7 +280,7 @@ func (s *conversationService) ListGroupMembers(ctx context.Context, userID, conv
 	items := make([]GroupMember, 0, len(users))
 	for _, user := range users {
 		items = append(items, GroupMember{
-			UserID:   user.PublicID,
+			UserID:   user.ID,
 			Avatar:   user.Avatar,
 			Username: user.Username,
 			Role:     roleByUser[user.ID],
@@ -384,11 +384,11 @@ func (s *conversationService) InviteGroupMembers(ctx context.Context, userID, co
 				return err
 			}
 		}
-		publicIDs, err := s.userPublicIDs(ctx, toInvite)
+		userIDs, err := s.userIDsForUsers(ctx, toInvite)
 		if err != nil {
 			return err
 		}
-		event, content, extra, err := buildGroupMembersJoinedMessage(publicIDs)
+		event, content, extra, err := buildGroupMembersJoinedMessage(userIDs)
 		if err != nil {
 			return err
 		}
@@ -427,11 +427,11 @@ func (s *conversationService) RemoveGroupMember(ctx context.Context, userID, con
 		if err := conversationRepo.UpdateMemberStatus(ctx, conversationID, memberID, model.ConversationMemberStatusRemoved, false); err != nil {
 			return err
 		}
-		publicIDs, err := s.userPublicIDs(ctx, []uint64{memberID})
+		userIDs, err := s.userIDsForUsers(ctx, []uint64{memberID})
 		if err != nil {
 			return err
 		}
-		event, content, extra, err := buildGroupMemberRemovedMessage(publicIDs[0])
+		event, content, extra, err := buildGroupMemberRemovedMessage(userIDs[0])
 		if err != nil {
 			return err
 		}
@@ -455,11 +455,11 @@ func (s *conversationService) LeaveGroup(ctx context.Context, userID, conversati
 		if err := conversationRepo.UpdateMemberStatus(ctx, conversationID, userID, model.ConversationMemberStatusLeft, false); err != nil {
 			return err
 		}
-		publicIDs, err := s.userPublicIDs(ctx, []uint64{userID})
+		userIDs, err := s.userIDsForUsers(ctx, []uint64{userID})
 		if err != nil {
 			return err
 		}
-		event, content, extra, err := buildGroupMemberLeftMessage(publicIDs[0])
+		event, content, extra, err := buildGroupMemberLeftMessage(userIDs[0])
 		if err != nil {
 			return err
 		}
@@ -695,7 +695,7 @@ func (s *conversationService) buildLatestReadState(ctx context.Context, member m
 	}
 	return &LatestReadState{
 		LatestSentSeq: member.LastSentMsgSeq,
-		ReadByUserIDs: publicIDsForUsers(usersByID(users), readByUserIDs),
+		ReadByUserIDs: userIDsForUsers(usersByID(users), readByUserIDs),
 	}, nil
 }
 
@@ -778,7 +778,7 @@ func (s *conversationService) buildConversationSummaries(
 				return nil, apperr.UserNotFound()
 			}
 			item.Peer = &ConversationPeer{
-				ID:       user.PublicID,
+				ID:       user.ID,
 				Avatar:   user.Avatar,
 				Username: user.Username,
 				Online:   onlineByUserID[user.ID],
@@ -1005,7 +1005,7 @@ func buildSystemMsgID(conversationID, actorID uint64) string {
 	return fmt.Sprintf("sys:%d:%d:%d", conversationID, actorID, time.Now().UnixNano())
 }
 
-func (s *conversationService) userPublicIDs(ctx context.Context, userIDs []uint64) ([]uint64, error) {
+func (s *conversationService) userIDsForUsers(ctx context.Context, userIDs []uint64) ([]uint64, error) {
 	users, err := s.userRepo.ListByIDs(ctx, uniqueUserIDs(userIDs))
 	if err != nil {
 		return nil, err
@@ -1013,11 +1013,10 @@ func (s *conversationService) userPublicIDs(ctx context.Context, userIDs []uint6
 	byID := usersByID(users)
 	result := make([]uint64, 0, len(userIDs))
 	for _, userID := range userIDs {
-		user, ok := byID[userID]
-		if !ok {
+		if _, ok := byID[userID]; !ok {
 			return nil, apperr.UserNotFound()
 		}
-		result = append(result, user.PublicID)
+		result = append(result, userID)
 	}
 	return result, nil
 }
@@ -1030,11 +1029,11 @@ func usersByID(users []model.User) map[uint64]model.User {
 	return result
 }
 
-func publicIDsForUsers(users map[uint64]model.User, ids []uint64) []uint64 {
+func userIDsForUsers(users map[uint64]model.User, ids []uint64) []uint64 {
 	result := make([]uint64, 0, len(ids))
 	for _, id := range ids {
-		if user, ok := users[id]; ok && user.PublicID != 0 {
-			result = append(result, user.PublicID)
+		if _, ok := users[id]; ok {
+			result = append(result, id)
 			continue
 		}
 		result = append(result, id)

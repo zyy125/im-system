@@ -97,7 +97,7 @@ func queryInt(c *gin.Context, key string, defaultValue int) int {
 
 func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 	return dto.UserInfoResp{
-		PublicID: user.PublicID,
+		UserID:   user.ID,
 		Avatar:   user.Avatar,
 		Username: user.Username,
 		Online:   online,
@@ -106,7 +106,7 @@ func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 
 func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 	return dto.FriendInfoResp{
-		PublicID:       friend.UserID,
+		UserID:         friend.UserID,
 		Avatar:         friend.Avatar,
 		Username:       friend.Username,
 		Online:         friend.Online,
@@ -116,7 +116,7 @@ func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 
 func buildFriendRequestUserResp(user service.FriendRequestUser) dto.FriendRequestUserResp {
 	return dto.FriendRequestUserResp{
-		PublicID: user.ID,
+		UserID:   user.ID,
 		Avatar:   user.Avatar,
 		Username: user.Username,
 		Online:   user.Online,
@@ -132,7 +132,7 @@ func buildConversationItemResp(conversation service.ConversationSummary) dto.Con
 	}
 	if conversation.Peer != nil {
 		item.Peer = &dto.ConversationPeerResp{
-			PublicID: conversation.Peer.ID,
+			UserID:   conversation.Peer.ID,
 			Avatar:   conversation.Peer.Avatar,
 			Username: conversation.Peer.Username,
 			Online:   conversation.Peer.Online,
@@ -141,7 +141,7 @@ func buildConversationItemResp(conversation service.ConversationSummary) dto.Con
 	return item
 }
 
-func buildMessageResp(msg model.Message, publicIDs map[uint64]uint64) dto.MessageResp {
+func buildMessageResp(msg model.Message) dto.MessageResp {
 	return dto.MessageResp{
 		ID:             msg.ID,
 		MsgID:          msg.MsgID,
@@ -149,17 +149,17 @@ func buildMessageResp(msg model.Message, publicIDs map[uint64]uint64) dto.Messag
 		Seq:            msg.Seq,
 		Type:           msg.Type,
 		Event:          msg.Event,
-		FromPublicID:   publicIDForUser(msg.From, publicIDs),
+		FromUserID:     msg.From,
 		SendTime:       msg.SendTime,
 		Content:        msg.Content,
 		Extra:          msg.Extra,
 	}
 }
 
-func buildMessageResps(msgs []model.Message, publicIDs map[uint64]uint64) []dto.MessageResp {
+func buildMessageResps(msgs []model.Message) []dto.MessageResp {
 	items := make([]dto.MessageResp, 0, len(msgs))
 	for _, msg := range msgs {
-		items = append(items, buildMessageResp(msg, publicIDs))
+		items = append(items, buildMessageResp(msg))
 	}
 	return items
 }
@@ -178,13 +178,6 @@ func collectMessageSenderIDs(msgs []model.Message) []uint64 {
 		ids = append(ids, msg.From)
 	}
 	return ids
-}
-
-func publicIDForUser(userID uint64, publicIDs map[uint64]uint64) uint64 {
-	if publicID, ok := publicIDs[userID]; ok {
-		return publicID
-	}
-	return 0
 }
 
 func buildGroupDetailResp(group service.GroupDetail) dto.GroupDetailResp {

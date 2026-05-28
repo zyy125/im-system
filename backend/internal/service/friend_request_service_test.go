@@ -21,7 +21,7 @@ func TestFriendRequestService_SendAutoAcceptedOnReversePending(t *testing.T) {
 	var resolveCalled bool
 
 	userRepo.getByIDFn = func(ctx context.Context, id uint64) (model.User, error) {
-		return model.User{ID: id, PublicID: 100000000 + id, Username: "u"}, nil
+		return model.User{ID: id, Username: "u"}, nil
 	}
 	friendRepo.areFriendsFn = func(ctx context.Context, userID, friendID uint64) (bool, error) {
 		return false, nil
@@ -102,7 +102,7 @@ func TestFriendRequestService_ListIncomingFiltersExistingFriends(t *testing.T) {
 	}
 	userRepo := &stubUserRepo{
 		getByIDFn: func(ctx context.Context, id uint64) (model.User, error) {
-			return model.User{ID: id, PublicID: 100000000 + id, Username: map[uint64]string{10: "alice", 20: "bob", 30: "charlie"}[id]}, nil
+			return model.User{ID: id, Username: map[uint64]string{10: "alice", 20: "bob", 30: "charlie"}[id]}, nil
 		},
 	}
 	presenceRepo := &stubPresenceRepo{

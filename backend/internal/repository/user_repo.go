@@ -10,7 +10,7 @@ import (
 type UserRepo interface {
 	Create(ctx context.Context, user *model.User) error
 	GetByID(ctx context.Context, id uint64) (model.User, error)
-	GetByPublicID(ctx context.Context, publicID uint64) (model.User, error)
+	GetByUsername(ctx context.Context, username string) (model.User, error)
 	ListByIDs(ctx context.Context, ids []uint64) ([]model.User, error)
 	Update(ctx context.Context, user *model.User) error
 }
@@ -33,8 +33,8 @@ func (r *userRepo) GetByID(ctx context.Context, id uint64) (model.User, error) {
 	return gorm.G[model.User](r.db).Where("id = ?", id).First(ctx)
 }
 
-func (r *userRepo) GetByPublicID(ctx context.Context, publicID uint64) (model.User, error) {
-	return gorm.G[model.User](r.db).Where("public_id = ?", publicID).First(ctx)
+func (r *userRepo) GetByUsername(ctx context.Context, username string) (model.User, error) {
+	return gorm.G[model.User](r.db).Where("username = ?", username).First(ctx)
 }
 
 func (r *userRepo) ListByIDs(ctx context.Context, ids []uint64) ([]model.User, error) {

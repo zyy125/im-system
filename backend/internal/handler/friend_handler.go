@@ -17,11 +17,11 @@ func NewFriendHandler(friendService service.FriendService, userService service.U
 
 // RemoveFriend 删除好友
 // @Summary 删除好友
-// @Description 删除当前用户与指定 public_id 用户的好友关系
+// @Description 删除当前用户与指定 user_id 用户的好友关系
 // @Tags 好友
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "好友用户 public_id"
+// @Param id path int true "好友用户 user_id"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"
@@ -29,17 +29,11 @@ func NewFriendHandler(friendService service.FriendService, userService service.U
 // @Router /api/v1/friends/{id} [delete]
 func (h *FriendHandler) RemoveFriend(c *gin.Context) {
 	userPK := currentUserPK(c)
-	friendPublicID, ok := parseUintParam(c, "id", "invalid friend id")
+	friendID, ok := parseUintParam(c, "id", "invalid friend id")
 	if !ok {
 		return
 	}
-	friendPK, err := h.userService.ResolveIDByPublicID(requestContext(c), friendPublicID)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	if err := h.friendService.RemoveFriend(requestContext(c), userPK, friendPK); err != nil {
+	if err := h.friendService.RemoveFriend(requestContext(c), userPK, friendID); err != nil {
 		respondError(c, err)
 		return
 	}

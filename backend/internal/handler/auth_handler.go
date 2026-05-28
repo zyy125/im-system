@@ -16,7 +16,7 @@ func NewAuthHandler(authService service.AuthService) *AuthHandler {
 
 // Register 用户注册
 // @Summary 用户注册
-// @Description 用户注册，成功后返回当前账号的 public_id。
+// @Description 用户注册，成功后返回当前账号的 user_id 和 username。
 // @Tags 用户
 // @Accept json
 // @Produce json
@@ -36,13 +36,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 	respondCreated(c, dto.UserRegisterResp{
-		PublicID: result.PublicID,
+		UserID:   result.UserID,
+		Username: result.Username,
 	})
 }
 
 // Login 用户登录
 // @Summary 用户登录
-// @Description 使用 public_id 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过 `Authorization: Bearer <access_token>` 传递。
+// @Description 使用 username 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过 `Authorization: Bearer <access_token>` 传递。
 // @Tags 用户
 // @Accept json
 // @Produce json
@@ -58,7 +59,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	tokens, err := h.authService.Login(requestContext(c), req.PublicID, req.Password)
+	tokens, err := h.authService.Login(requestContext(c), req.Username, req.Password)
 	if err != nil {
 		respondError(c, err)
 		return

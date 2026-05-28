@@ -18,7 +18,7 @@ func TestFriendService_ListFriendsIncludesConversationID(t *testing.T) {
 		},
 		&stubUserRepo{
 			getByIDFn: func(ctx context.Context, id uint64) (model.User, error) {
-				return model.User{ID: id, PublicID: 100000002, Username: "bob"}, nil
+				return model.User{ID: id, Username: "bob"}, nil
 			},
 		},
 		&stubPresenceRepo{
@@ -32,7 +32,7 @@ func TestFriendService_ListFriendsIncludesConversationID(t *testing.T) {
 	items, err := service.ListFriends(context.Background(), 1)
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
-	assert.Equal(t, uint64(100000002), items[0].UserID)
+	assert.Equal(t, uint64(2), items[0].UserID)
 	assert.Equal(t, "bob", items[0].Username)
 	assert.True(t, items[0].Online)
 	assert.Equal(t, uint64(12), items[0].ConversationID)
@@ -53,7 +53,7 @@ func TestFriendService_AddFriendStoresConversationID(t *testing.T) {
 		},
 		&stubUserRepo{
 			getByIDFn: func(ctx context.Context, id uint64) (model.User, error) {
-				return model.User{ID: id, PublicID: 100000002, Username: "bob"}, nil
+				return model.User{ID: id, Username: "bob"}, nil
 			},
 		},
 		&stubPresenceRepo{},
@@ -87,7 +87,7 @@ func TestFriendService_ListFriendsRepairsMissingConversationID(t *testing.T) {
 		},
 		&stubUserRepo{
 			getByIDFn: func(ctx context.Context, id uint64) (model.User, error) {
-				return model.User{ID: id, PublicID: 100000002, Username: "bob"}, nil
+				return model.User{ID: id, Username: "bob"}, nil
 			},
 		},
 		&stubPresenceRepo{

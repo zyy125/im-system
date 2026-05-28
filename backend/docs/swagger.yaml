@@ -4,7 +4,7 @@ definitions:
     properties:
       online:
         type: boolean
-      public_id:
+      user_id:
         type: integer
     type: object
   dto.ConversationItemResp:
@@ -33,7 +33,7 @@ definitions:
     properties:
       online:
         type: boolean
-      public_id:
+      user_id:
         type: integer
       username:
         type: string
@@ -55,7 +55,7 @@ definitions:
         type: integer
       online:
         type: boolean
-      public_id:
+      user_id:
         type: integer
       username:
         type: string
@@ -91,7 +91,7 @@ definitions:
     properties:
       online:
         type: boolean
-      public_id:
+      user_id:
         type: integer
       username:
         type: string
@@ -134,7 +134,7 @@ definitions:
     properties:
       online:
         type: boolean
-      public_id:
+      user_id:
         type: integer
       role:
         $ref: '#/definitions/model.ConversationMemberRole'
@@ -154,7 +154,7 @@ definitions:
     properties:
       latest_sent_seq:
         type: integer
-      read_by_public_ids:
+      read_by_user_ids:
         items:
           type: integer
         type: array
@@ -182,7 +182,7 @@ definitions:
         $ref: '#/definitions/model.MessageEvent'
       extra:
         type: object
-      from_public_id:
+      from_user_id:
         type: integer
       id:
         type: integer
@@ -229,7 +229,7 @@ definitions:
     properties:
       online:
         type: boolean
-      public_id:
+      user_id:
         type: integer
       username:
         type: string
@@ -238,11 +238,11 @@ definitions:
     properties:
       password:
         type: string
-      public_id:
+      user_id:
         type: integer
     required:
     - password
-    - public_id
+    - user_id
     type: object
   dto.UserLoginResp:
     properties:
@@ -281,7 +281,7 @@ definitions:
     type: object
   dto.UserRegisterResp:
     properties:
-      public_id:
+      user_id:
         type: integer
     type: object
   model.ConversationMemberRole:
@@ -406,7 +406,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: '使用 public_id 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过
+      description: '使用 user_id 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过
         `Authorization: Bearer <access_token>` 传递。'
       parameters:
       - description: 用户登录请求
@@ -510,7 +510,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 用户注册，成功后返回当前账号的 public_id。
+      description: 用户注册，成功后返回当前账号的 user_id。
       parameters:
       - description: 用户注册请求
         in: body
@@ -683,7 +683,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建一个群聊并可携带初始成员，member_ids 使用用户 public_id。
+      description: 创建一个群聊并可携带初始成员，member_ids 使用用户 user_id。
       parameters:
       - description: 创建群聊请求
         in: body
@@ -815,7 +815,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 邀请用户加入指定群聊，member_ids 使用用户 public_id。
+      description: 邀请用户加入指定群聊，member_ids 使用用户 user_id。
       parameters:
       - description: 群会话ID
         in: path
@@ -964,7 +964,7 @@ paths:
         name: id
         required: true
         type: integer
-      - description: 成员用户 public_id
+      - description: 成员用户 user_id
         in: path
         name: user_id
         required: true
@@ -1054,9 +1054,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: 向指定 public_id 用户发送好友申请；若存在反向待处理申请，则自动同意
+      description: 向指定 user_id 用户发送好友申请；若存在反向待处理申请，则自动同意
       parameters:
-      - description: 目标用户 public_id
+      - description: 目标用户 user_id
         in: path
         name: id
         required: true
@@ -1274,9 +1274,9 @@ paths:
       - 好友
   /api/v1/friends/{id}:
     delete:
-      description: 删除当前用户与指定 public_id 用户的好友关系
+      description: 删除当前用户与指定 user_id 用户的好友关系
       parameters:
-      - description: 好友用户 public_id
+      - description: 好友用户 user_id
         in: path
         name: id
         required: true
@@ -1435,9 +1435,9 @@ paths:
       - 用户
   /api/v1/users/{id}:
     get:
-      description: 根据用户 public_id 查询基础信息与在线状态
+      description: 根据用户 user_id 查询基础信息与在线状态
       parameters:
-      - description: 用户 public_id
+      - description: 用户 user_id
         in: path
         name: id
         required: true

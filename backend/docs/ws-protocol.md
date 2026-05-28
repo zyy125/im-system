@@ -90,7 +90,7 @@
     "seq": 456,
     "type": 1,
     "event": "",
-    "from_public_id": 100000009,
+    "from_user_id": 100000009,
     "send_time": 1742970000000,
     "content": "hello",
     "extra": null
@@ -107,7 +107,7 @@
   "type": "message.delivered",
   "data": {
     "conversation_id": 1,
-    "public_id": 100000010,
+    "user_id": 100000010,
     "delivered_seq": 123
   }
 }
@@ -122,7 +122,7 @@
   "type": "message.read",
   "data": {
     "conversation_id": 1,
-    "public_id": 100000010,
+    "user_id": 100000010,
     "read_seq": 123
   }
 }
@@ -133,7 +133,7 @@
 ### error / presence.changed
 
 - `error` 携带 `{code, message}`。
-- `presence.changed` 携带 `{public_id, online}`，只表示好友在线状态变化。
+- `presence.changed` 携带 `{user_id, online}`，只表示好友在线状态变化。
 
 ### sync.required
 

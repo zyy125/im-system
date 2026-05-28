@@ -13,8 +13,8 @@ func TestFriendRepo_AddPairAndRemovePair(t *testing.T) {
 	repo := NewFriendRepo(db)
 	ctx := context.Background()
 
-	assert.NoError(t, db.Create(&model.User{ID: 1, PublicID: 100000001, Username: "alice", Password: "x"}).Error)
-	assert.NoError(t, db.Create(&model.User{ID: 2, PublicID: 100000002, Username: "bob", Password: "x"}).Error)
+	assert.NoError(t, db.Create(&model.User{ID: 1, Username: "alice", Password: "x"}).Error)
+	assert.NoError(t, db.Create(&model.User{ID: 2, Username: "bob", Password: "x"}).Error)
 
 	assert.NoError(t, repo.AddPair(ctx, 1, 2, 10))
 	assert.NoError(t, repo.AddPair(ctx, 1, 2, 11))

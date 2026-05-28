@@ -233,7 +233,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 			},
 			&stubUserRepo{
 				getByIDFn: func(ctx context.Context, id uint64) (model.User, error) {
-					return model.User{ID: id, PublicID: 100000000 + id, Username: "peer-user"}, nil
+					return model.User{ID: id, Username: "peer-user"}, nil
 				},
 			},
 			&stubPresenceRepo{
@@ -249,7 +249,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		assert.Equal(t, uint64(12), result.Conversation.ID)
 		assert.NotNil(t, result.LatestReadState)
 		assert.Equal(t, uint64(21), result.LatestReadState.LatestSentSeq)
-		assert.Equal(t, []uint64{100000002}, result.LatestReadState.ReadByUserIDs)
+		assert.Equal(t, []uint64{2}, result.LatestReadState.ReadByUserIDs)
 	})
 
 	t.Run("open conversation returns latest read state for group conversation", func(t *testing.T) {
@@ -288,7 +288,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 				listByIDsFn: func(ctx context.Context, ids []uint64) ([]model.User, error) {
 					users := make([]model.User, 0, len(ids))
 					for _, id := range ids {
-						users = append(users, model.User{ID: id, PublicID: 100000000 + id, Username: "u"})
+						users = append(users, model.User{ID: id, Username: "u"})
 					}
 					return users, nil
 				},
@@ -302,7 +302,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		assert.Equal(t, uint64(18), result.Conversation.ID)
 		assert.NotNil(t, result.LatestReadState)
 		assert.Equal(t, uint64(33), result.LatestReadState.LatestSentSeq)
-		assert.Equal(t, []uint64{100000010, 100000011}, result.LatestReadState.ReadByUserIDs)
+		assert.Equal(t, []uint64{10, 11}, result.LatestReadState.ReadByUserIDs)
 	})
 
 	t.Run("open conversation returns nil latest read state when last sent seq is zero", func(t *testing.T) {
@@ -370,7 +370,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 			},
 			&stubUserRepo{
 				getByIDFn: func(ctx context.Context, id uint64) (model.User, error) {
-					return model.User{ID: id, PublicID: 100000000 + id, Username: "peer-user"}, nil
+					return model.User{ID: id, Username: "peer-user"}, nil
 				},
 			},
 			&stubPresenceRepo{
@@ -387,7 +387,7 @@ func TestConversationService_MarkReadAndListConversations(t *testing.T) {
 		assert.Equal(t, "peer-user", items[0].Name)
 		assert.Equal(t, int64(3), items[0].UnreadCount)
 		assert.NotNil(t, items[0].Peer)
-		assert.Equal(t, uint64(100000002), items[0].Peer.ID)
+		assert.Equal(t, uint64(2), items[0].Peer.ID)
 		assert.NotNil(t, items[0].LastMessage)
 		assert.Equal(t, "m11", items[0].LastMessage.MsgID)
 	})
@@ -537,7 +537,7 @@ func TestConversationService_CreateGroupAndListMembers(t *testing.T) {
 			listByIDsFn: func(ctx context.Context, ids []uint64) ([]model.User, error) {
 				users := make([]model.User, 0, len(ids))
 				for _, id := range ids {
-					users = append(users, model.User{ID: id, PublicID: 100000000 + id, Username: "u"})
+					users = append(users, model.User{ID: id, Username: "u"})
 				}
 				return users, nil
 			},
@@ -563,14 +563,14 @@ func TestConversationService_CreateGroupAndListMembers(t *testing.T) {
 	members, err := service.ListGroupMembers(ctx, 1, 21)
 	assert.NoError(t, err)
 	assert.Len(t, members, 3)
-	assert.Equal(t, uint64(100000001), members[0].UserID)
+	assert.Equal(t, uint64(1), members[0].UserID)
 	assert.Equal(t, model.ConversationMemberRoleOwner, members[0].Role)
 }
 
-func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
+func TestConversationService_SystemMessageExtraUsesUserIDs(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("invite group members stores public member ids", func(t *testing.T) {
+	t.Run("invite group members stores user ids", func(t *testing.T) {
 		var createdMessages []model.Message
 
 		service := NewConversationService(
@@ -624,7 +624,7 @@ func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
 				listByIDsFn: func(ctx context.Context, ids []uint64) ([]model.User, error) {
 					users := make([]model.User, 0, len(ids))
 					for _, id := range ids {
-						users = append(users, model.User{ID: id, PublicID: 100000000 + id, Username: "u"})
+						users = append(users, model.User{ID: id, Username: "u"})
 					}
 					return users, nil
 				},
@@ -644,12 +644,11 @@ func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
 			Count     int      `json:"count"`
 		}
 		require.NoError(t, json.Unmarshal(createdMessages[0].Extra, &extra))
-		assert.Equal(t, []uint64{100000003}, extra.MemberIDs)
-		assert.NotContains(t, extra.MemberIDs, uint64(3))
+		assert.Equal(t, []uint64{3}, extra.MemberIDs)
 		assert.Equal(t, 1, extra.Count)
 	})
 
-	t.Run("remove group member stores public target user id", func(t *testing.T) {
+	t.Run("remove group member stores target user id", func(t *testing.T) {
 		var createdMessages []model.Message
 
 		service := NewConversationService(
@@ -707,7 +706,7 @@ func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
 				listByIDsFn: func(ctx context.Context, ids []uint64) ([]model.User, error) {
 					users := make([]model.User, 0, len(ids))
 					for _, id := range ids {
-						users = append(users, model.User{ID: id, PublicID: 100000000 + id, Username: "u"})
+						users = append(users, model.User{ID: id, Username: "u"})
 					}
 					return users, nil
 				},
@@ -726,11 +725,10 @@ func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
 			TargetUserID uint64 `json:"target_user_id"`
 		}
 		require.NoError(t, json.Unmarshal(createdMessages[0].Extra, &extra))
-		assert.Equal(t, uint64(100000002), extra.TargetUserID)
-		assert.NotEqual(t, uint64(2), extra.TargetUserID)
+		assert.Equal(t, uint64(2), extra.TargetUserID)
 	})
 
-	t.Run("leave group stores public user id", func(t *testing.T) {
+	t.Run("leave group stores user id", func(t *testing.T) {
 		var createdMessages []model.Message
 
 		service := NewConversationService(
@@ -784,7 +782,7 @@ func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
 				listByIDsFn: func(ctx context.Context, ids []uint64) ([]model.User, error) {
 					users := make([]model.User, 0, len(ids))
 					for _, id := range ids {
-						users = append(users, model.User{ID: id, PublicID: 100000000 + id, Username: "u"})
+						users = append(users, model.User{ID: id, Username: "u"})
 					}
 					return users, nil
 				},
@@ -803,7 +801,6 @@ func TestConversationService_SystemMessageExtraUsesPublicIDs(t *testing.T) {
 			UserID uint64 `json:"user_id"`
 		}
 		require.NoError(t, json.Unmarshal(createdMessages[0].Extra, &extra))
-		assert.Equal(t, uint64(100000002), extra.UserID)
-		assert.NotEqual(t, uint64(2), extra.UserID)
+		assert.Equal(t, uint64(2), extra.UserID)
 	})
 }

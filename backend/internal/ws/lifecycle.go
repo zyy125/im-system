@@ -59,12 +59,8 @@ func (l *clientLifecycle) Bootstrap(ctx context.Context, userID uint64) ([][]byt
 	}
 
 	payloads := make([][]byte, 0, len(msgs))
-	publicIDs, err := l.userService.MapPublicIDsByIDs(ctx, collectOfflineSenderIDs(msgs))
-	if err != nil {
-		return nil, err
-	}
 	for _, msg := range msgs {
-		payload, err := MarshalEnvelope(EventTypeMessageCreated, NewServerMessage(msg, publicIDs))
+		payload, err := MarshalEnvelope(EventTypeMessageCreated, NewServerMessage(msg))
 		if err != nil {
 			logger.Error("marshal offline message failed", "msg_id", msg.MsgID, "error", err)
 			continue
@@ -119,15 +115,9 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 	if len(friendIDs) == 0 {
 		return
 	}
-	publicIDs, err := l.userService.MapPublicIDsByIDs(ctx, []uint64{userID})
-	if err != nil {
-		logging.FromContext(ctx).With("user_id", userID).Error("resolve presence public id failed", "error", err)
-		return
-	}
-
 	payload, err := MarshalEnvelope(EventTypePresenceChanged, PresenceChangedData{
-		PublicID: publicIDs[userID],
-		Online:   online,
+		UserID: userID,
+		Online: online,
 	})
 	if err != nil {
 		logging.FromContext(ctx).With("user_id", userID).Error("marshal presence event failed", "error", err)

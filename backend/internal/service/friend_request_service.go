@@ -216,7 +216,7 @@ func (s *friendRequestService) buildUser(ctx context.Context, userID uint64) (Fr
 		return FriendRequestUser{}, err
 	}
 	return FriendRequestUser{
-		ID:       user.PublicID,
+		ID:       user.ID,
 		Avatar:   user.Avatar,
 		Username: user.Username,
 		Online:   online,

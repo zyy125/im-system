@@ -3,7 +3,7 @@ package dto
 import "github.com/zyy125/im-system/internal/model"
 
 type ConversationPeerResp struct {
-	PublicID uint64 `json:"public_id"`
+	UserID   uint64 `json:"user_id"`
 	Avatar   string `json:"avatar"`
 	Username string `json:"username"`
 	Online   bool   `json:"online"`
@@ -23,9 +23,9 @@ type ConversationListResp struct {
 }
 
 type LatestReadStateResp struct {
-	LatestSentSeq   uint64   `json:"latest_sent_seq"`
-	ReadByPublicIDs []uint64 `json:"read_by_public_ids"`
-	ReadCount       int      `json:"read_count"`
+	LatestSentSeq uint64   `json:"latest_sent_seq"`
+	ReadByUserIDs []uint64 `json:"read_by_user_ids"`
+	ReadCount     int      `json:"read_count"`
 }
 
 type OpenConversationResp struct {
@@ -49,7 +49,7 @@ type GroupDetailResp struct {
 }
 
 type GroupMemberResp struct {
-	PublicID uint64                       `json:"public_id"`
+	UserID   uint64                       `json:"user_id"`
 	Avatar   string                       `json:"avatar"`
 	Username string                       `json:"username"`
 	Role     model.ConversationMemberRole `json:"role"`

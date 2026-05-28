@@ -128,7 +128,7 @@ func (s *friendService) ListFriends(ctx context.Context, userID uint64) ([]Frien
 			conversationID = conv.ID
 		}
 		res = append(res, FriendInfo{
-			UserID:         friendUser.PublicID,
+			UserID:         friendUser.ID,
 			Avatar:         friendUser.Avatar,
 			Username:       item.Username,
 			Online:         online,

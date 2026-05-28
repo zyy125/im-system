@@ -43,11 +43,11 @@ func InvalidID(name string) *Error {
 }
 
 func CredentialsRequired() *Error {
-	return New(CodeAuthCredentialsRequired, "public_id and password are required")
+	return New(CodeAuthCredentialsRequired, "username and password are required")
 }
 
 func InvalidCredentials() *Error {
-	return Unauthorized(CodeAuthInvalidCredentials, "public_id or password is incorrect")
+	return Unauthorized(CodeAuthInvalidCredentials, "username or password is incorrect")
 }
 
 func TokenMissing() *Error {

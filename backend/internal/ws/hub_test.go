@@ -85,14 +85,6 @@ type hubTestUserService struct {
 	service.UserService
 }
 
-func (s *hubTestUserService) MapPublicIDsByIDs(ctx context.Context, ids []uint64) (map[uint64]uint64, error) {
-	result := make(map[uint64]uint64, len(ids))
-	for _, id := range ids {
-		result[id] = 100000000 + id
-	}
-	return result, nil
-}
-
 func TestHub_RegisterFlushesOfflineAndPendingMessages(t *testing.T) {
 	presenceRepo := newHubTestPresenceRepo()
 	loaderGate := make(chan struct{})
@@ -175,7 +167,7 @@ func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T)
 
 	onlineEvent := decodePresenceEvent(t, readHubPayload(t, friend.Send))
 	assert.Equal(t, EventTypePresenceChanged, onlineEvent.Type)
-	assert.Equal(t, uint64(100000001), onlineEvent.PublicID)
+	assert.Equal(t, uint64(1), onlineEvent.UserID)
 	assert.True(t, onlineEvent.Online)
 
 	assertNoUserID(t, presenceRepo.setOnline)
@@ -187,7 +179,7 @@ func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T)
 	waitForUserID(t, presenceRepo.setOffline, 1)
 	offlineEvent := decodePresenceEvent(t, readHubPayload(t, friend.Send))
 	assert.Equal(t, EventTypePresenceChanged, offlineEvent.Type)
-	assert.Equal(t, uint64(100000001), offlineEvent.PublicID)
+	assert.Equal(t, uint64(1), offlineEvent.UserID)
 	assert.False(t, offlineEvent.Online)
 
 	hub.EnqueueUnregister(friend)
@@ -497,9 +489,9 @@ func decodeMessage(t *testing.T, payload []byte) ServerMessage {
 }
 
 type decodedPresenceEvent struct {
-	Type     string
-	PublicID uint64
-	Online   bool
+	Type   string
+	UserID uint64
+	Online bool
 }
 
 func decodePresenceEvent(t *testing.T, payload []byte) decodedPresenceEvent {
@@ -511,9 +503,9 @@ func decodePresenceEvent(t *testing.T, payload []byte) decodedPresenceEvent {
 	var data PresenceChangedData
 	require.NoError(t, json.Unmarshal(env.Data, &data))
 	return decodedPresenceEvent{
-		Type:     env.Type,
-		PublicID: data.PublicID,
-		Online:   data.Online,
+		Type:   env.Type,
+		UserID: data.UserID,
+		Online: data.Online,
 	}
 }
 

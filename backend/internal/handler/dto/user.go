@@ -1,20 +1,20 @@
 package dto
 
 type CheckUserOnlineResp struct {
-	PublicID uint64 `json:"public_id"`
-	Avatar   string `json:"avatar"`
-	Online   bool   `json:"online"`
+	UserID uint64 `json:"user_id"`
+	Avatar string `json:"avatar"`
+	Online bool   `json:"online"`
 }
 
 type UserInfoResp struct {
-	PublicID uint64 `json:"public_id"`
+	UserID   uint64 `json:"user_id"`
 	Avatar   string `json:"avatar"`
 	Username string `json:"username"`
 	Online   bool   `json:"online"`
 }
 
 type FriendInfoResp struct {
-	PublicID       uint64 `json:"public_id"`
+	UserID         uint64 `json:"user_id"`
 	Avatar         string `json:"avatar"`
 	Username       string `json:"username"`
 	Online         bool   `json:"online"`

@@ -217,7 +217,7 @@ func TestGolden_RegisterAndLogin(t *testing.T) {
 
 	var me dto.UserInfoResp
 	decodeData(t, resp, &me)
-	assert.Equal(t, userID, me.PublicID)
+	assert.Equal(t, userID, me.UserID)
 	assert.Equal(t, "alice", me.Username)
 	assert.False(t, me.Online)
 }
@@ -262,7 +262,7 @@ func TestGolden_UploadAvatarAndReadBackUserInfo(t *testing.T) {
 	assert.Equal(t, avatarBody.Avatar, me.Avatar)
 }
 
-func TestGolden_DuplicateUsernameUsesDistinctPublicIDLogin(t *testing.T) {
+func TestGolden_DuplicateUsernameRejected(t *testing.T) {
 	env := newTestEnv(t)
 
 	const username = "same-name"
@@ -274,53 +274,14 @@ func TestGolden_DuplicateUsernameUsesDistinctPublicIDLogin(t *testing.T) {
 	assert.Equal(t, "ok", firstRegister.Code)
 	var first dto.UserRegisterResp
 	decodeData(t, firstRegister, &first)
-	require.NotZero(t, first.PublicID)
-	assert.GreaterOrEqual(t, first.PublicID, uint64(100000000))
-	assert.LessOrEqual(t, first.PublicID, uint64(999999999))
+	require.NotZero(t, first.UserID)
+	assert.Equal(t, username, first.Username)
 
 	secondRegister := doJSON(t, env, http.MethodPost, "/api/v1/auth/register", "", map[string]any{
 		"username": username,
 		"password": "secret456",
 	})
-	assert.Equal(t, "ok", secondRegister.Code)
-	var second dto.UserRegisterResp
-	decodeData(t, secondRegister, &second)
-	require.NotZero(t, second.PublicID)
-	assert.GreaterOrEqual(t, second.PublicID, uint64(100000000))
-	assert.LessOrEqual(t, second.PublicID, uint64(999999999))
-	assert.NotEqual(t, first.PublicID, second.PublicID)
-
-	firstLogin := doJSON(t, env, http.MethodPost, "/api/v1/auth/login", "", map[string]any{
-		"public_id": first.PublicID,
-		"password":  "secret123",
-	})
-	assert.Equal(t, "ok", firstLogin.Code)
-	var firstLoginBody dto.UserLoginResp
-	decodeData(t, firstLogin, &firstLoginBody)
-	require.NotEmpty(t, firstLoginBody.AccessToken)
-
-	secondLogin := doJSON(t, env, http.MethodPost, "/api/v1/auth/login", "", map[string]any{
-		"public_id": second.PublicID,
-		"password":  "secret456",
-	})
-	assert.Equal(t, "ok", secondLogin.Code)
-	var secondLoginBody dto.UserLoginResp
-	decodeData(t, secondLogin, &secondLoginBody)
-	require.NotEmpty(t, secondLoginBody.AccessToken)
-
-	firstMe := doJSON(t, env, http.MethodGet, "/api/v1/users/me", firstLoginBody.AccessToken, nil)
-	assert.Equal(t, "ok", firstMe.Code)
-	var firstUser dto.UserInfoResp
-	decodeData(t, firstMe, &firstUser)
-	assert.Equal(t, first.PublicID, firstUser.PublicID)
-	assert.Equal(t, username, firstUser.Username)
-
-	secondMe := doJSON(t, env, http.MethodGet, "/api/v1/users/me", secondLoginBody.AccessToken, nil)
-	assert.Equal(t, "ok", secondMe.Code)
-	var secondUser dto.UserInfoResp
-	decodeData(t, secondMe, &secondUser)
-	assert.Equal(t, second.PublicID, secondUser.PublicID)
-	assert.Equal(t, username, secondUser.Username)
+	assert.Equal(t, string(apperr.CodeInvalidArgument), secondRegister.Code)
 }
 
 func TestGolden_RefreshAndLogout(t *testing.T) {
@@ -334,10 +295,10 @@ func TestGolden_RefreshAndLogout(t *testing.T) {
 
 	var register dto.UserRegisterResp
 	decodeData(t, resp, &register)
-	require.NotZero(t, register.PublicID)
+	require.NotZero(t, register.UserID)
 
 	resp = doJSON(t, env, http.MethodPost, "/api/v1/auth/login", "", map[string]any{
-		"public_id": register.PublicID,
+		"username": "alice",
 		"password": "secret123",
 	})
 	assert.Equal(t, "ok", resp.Code)
@@ -385,7 +346,7 @@ func TestGolden_FriendRequestAndAccept(t *testing.T) {
 	var incomingBody dto.FriendRequestListResp
 	decodeData(t, incoming, &incomingBody)
 	require.Len(t, incomingBody.Requests, 1)
-	assert.Equal(t, aliceID, incomingBody.Requests[0].Requester.PublicID)
+	assert.Equal(t, aliceID, incomingBody.Requests[0].Requester.UserID)
 
 	requestID := incomingBody.Requests[0].ID
 	resp = doJSON(t, env, http.MethodPost, "/api/v1/friend-requests/"+uintToString(requestID)+"/accept", bobToken, nil)
@@ -395,25 +356,25 @@ func TestGolden_FriendRequestAndAccept(t *testing.T) {
 	var aliceFriendList dto.FriendListResp
 	decodeData(t, aliceFriends, &aliceFriendList)
 	require.Len(t, aliceFriendList.Friends, 1)
-	assert.Equal(t, bobID, aliceFriendList.Friends[0].PublicID)
+	assert.Equal(t, bobID, aliceFriendList.Friends[0].UserID)
 
 	bobFriends := doJSON(t, env, http.MethodGet, "/api/v1/friends", bobToken, nil)
 	var bobFriendList dto.FriendListResp
 	decodeData(t, bobFriends, &bobFriendList)
 	require.Len(t, bobFriendList.Friends, 1)
-	assert.Equal(t, aliceID, bobFriendList.Friends[0].PublicID)
+	assert.Equal(t, aliceID, bobFriendList.Friends[0].UserID)
 
 	aliceConversations := doJSON(t, env, http.MethodGet, "/api/v1/conversations", aliceToken, nil)
 	var aliceConversationList dto.ConversationListResp
 	decodeData(t, aliceConversations, &aliceConversationList)
 	require.Len(t, aliceConversationList.Conversations, 1)
-	assert.Equal(t, bobID, aliceConversationList.Conversations[0].Peer.PublicID)
+	assert.Equal(t, bobID, aliceConversationList.Conversations[0].Peer.UserID)
 
 	bobConversations := doJSON(t, env, http.MethodGet, "/api/v1/conversations", bobToken, nil)
 	var bobConversationList dto.ConversationListResp
 	decodeData(t, bobConversations, &bobConversationList)
 	require.Len(t, bobConversationList.Conversations, 1)
-	assert.Equal(t, aliceID, bobConversationList.Conversations[0].Peer.PublicID)
+	assert.Equal(t, aliceID, bobConversationList.Conversations[0].Peer.UserID)
 }
 
 func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
@@ -427,13 +388,13 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 	var friendsBody dto.FriendListResp
 	decodeData(t, friendsResp, &friendsBody)
 	require.Len(t, friendsBody.Friends, 1)
-	assert.Equal(t, bobID, friendsBody.Friends[0].PublicID)
+	assert.Equal(t, bobID, friendsBody.Friends[0].UserID)
 	require.NotZero(t, friendsBody.Friends[0].ConversationID)
 
 	openResp := doJSON(t, env, http.MethodPost, "/api/v1/conversations/"+uintToString(friendsBody.Friends[0].ConversationID)+"/open", aliceToken, nil)
 	var openBody dto.OpenConversationResp
 	decodeData(t, openResp, &openBody)
-	assert.Equal(t, bobID, openBody.Conversation.Peer.PublicID)
+	assert.Equal(t, bobID, openBody.Conversation.Peer.UserID)
 
 	aliceConn := openWebSocket(t, env, aliceToken)
 	defer aliceConn.Close()
@@ -453,7 +414,7 @@ func TestGolden_OpenConversationAndSendMessage(t *testing.T) {
 
 	sent := readMessageEvent(t, aliceConn, ws.EventTypeMessageSent, msgID, 5*time.Second)
 	assert.Equal(t, msgID, sent.MsgID)
-	assert.Equal(t, aliceID, sent.FromPublicID)
+	assert.Equal(t, aliceID, sent.FromUserID)
 	assert.Equal(t, "hello bob", sent.Content)
 	assert.Equal(t, openBody.Conversation.ID, sent.ConversationID)
 
@@ -531,7 +492,7 @@ func TestGolden_CreateGroupAndSendGroupMessage(t *testing.T) {
 
 	charlieDelivered := readMessageEvent(t, charlieConn, ws.EventTypeMessageCreated, msgID, 5*time.Second)
 	assert.Equal(t, msgID, charlieDelivered.MsgID)
-	assert.Equal(t, aliceID, charlieDelivered.FromPublicID)
+	assert.Equal(t, aliceID, charlieDelivered.FromUserID)
 	assert.Equal(t, createBody.Conversation.ID, charlieDelivered.ConversationID)
 	assert.Equal(t, "hello group", charlieDelivered.Content)
 
@@ -593,10 +554,10 @@ func registerAndLogin(t *testing.T, env *testEnv, username, password string) (ui
 	assert.Equal(t, "ok", resp.Code)
 	var register dto.UserRegisterResp
 	decodeData(t, resp, &register)
-	require.NotZero(t, register.PublicID)
+	require.NotZero(t, register.UserID)
 
 	resp = doJSON(t, env, http.MethodPost, "/api/v1/auth/login", "", map[string]any{
-		"public_id": register.PublicID,
+		"username": username,
 		"password": password,
 	})
 	assert.Equal(t, "ok", resp.Code)
@@ -608,7 +569,7 @@ func registerAndLogin(t *testing.T, env *testEnv, username, password string) (ui
 	me := doJSON(t, env, http.MethodGet, "/api/v1/users/me", login.AccessToken, nil)
 	var meBody dto.UserInfoResp
 	decodeData(t, me, &meBody)
-	return meBody.PublicID, login.AccessToken
+	return meBody.UserID, login.AccessToken
 }
 
 func makeFriends(t *testing.T, env *testEnv, requesterToken, receiverToken string, receiverID uint64) {
@@ -680,7 +641,7 @@ func readDeliveryReceipt(t *testing.T, conn *websocket.Conn, conversationID, use
 
 		var receipt ws.MessageDeliveredData
 		require.NoError(t, json.Unmarshal(env.Data, &receipt))
-		if receipt.ConversationID == conversationID && receipt.PublicID == userID && receipt.DeliveredSeq == deliveredSeq {
+		if receipt.ConversationID == conversationID && receipt.UserID == userID && receipt.DeliveredSeq == deliveredSeq {
 			return receipt
 		}
 	}

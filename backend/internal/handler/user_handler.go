@@ -33,8 +33,9 @@ func (h *UserHandler) CheckUserOnline(c *gin.Context) {
 	}
 
 	res := dto.CheckUserOnlineResp{
-		PublicID: user.PublicID,
-		Online:   online,
+		UserID: user.ID,
+		Avatar: user.Avatar,
+		Online: online,
 	}
 	respondOK(c, res)
 }
@@ -62,11 +63,11 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 
 // GetUserInfo 获取指定用户信息
 // @Summary 获取指定用户信息
-// @Description 根据用户 public_id 查询基础信息与在线状态
+// @Description 根据用户 user_id 查询基础信息与在线状态
 // @Tags 用户
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "用户 public_id"
+// @Param id path int true "用户 user_id"
 // @Success 200 {object} response.Response{data=dto.UserInfoResp} "查询成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"
@@ -74,11 +75,11 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 // @Failure 500 {object} response.Response "内部服务器错误"
 // @Router /api/v1/users/{id} [get]
 func (h *UserHandler) GetUserInfo(c *gin.Context) {
-	publicID, ok := parseUintParam(c, "id", "invalid user id")
+	userID, ok := parseUintParam(c, "id", "invalid user id")
 	if !ok {
 		return
 	}
-	user, online, err := h.userService.GetUserByPublicID(requestContext(c), publicID)
+	user, online, err := h.userService.GetUserByID(requestContext(c), userID)
 	if err != nil {
 		respondError(c, err)
 		return

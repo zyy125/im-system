@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
 	"github.com/zyy125/im-system/internal/handler/dto"
 	"github.com/zyy125/im-system/internal/service"
@@ -40,15 +38,10 @@ func (h *ConversationHandler) List(c *gin.Context) {
 	}
 
 	res := make([]dto.ConversationItemResp, 0, len(conversations))
-	publicIDs, err := messageSenderPublicIDs(requestContext(c), h.userService, conversations)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
 	for _, conversation := range conversations {
 		item := buildConversationItemResp(conversation)
 		if conversation.LastMessage != nil {
-			message := buildMessageResp(*conversation.LastMessage, publicIDs)
+			message := buildMessageResp(*conversation.LastMessage)
 			item.LastMessage = &message
 		}
 		res = append(res, item)
@@ -114,20 +107,15 @@ func (h *ConversationHandler) Open(c *gin.Context) {
 	resp := dto.OpenConversationResp{
 		Conversation: buildConversationItemResp(result.Conversation),
 	}
-	publicIDs, err := messageSenderPublicIDs(requestContext(c), h.userService, []service.ConversationSummary{result.Conversation})
-	if err != nil {
-		respondError(c, err)
-		return
-	}
 	if result.Conversation.LastMessage != nil {
-		message := buildMessageResp(*result.Conversation.LastMessage, publicIDs)
+		message := buildMessageResp(*result.Conversation.LastMessage)
 		resp.Conversation.LastMessage = &message
 	}
 	if result.LatestReadState != nil {
 		resp.LatestReadState = &dto.LatestReadStateResp{
-			LatestSentSeq:   result.LatestReadState.LatestSentSeq,
-			ReadByPublicIDs: result.LatestReadState.ReadByUserIDs,
-			ReadCount:       len(result.LatestReadState.ReadByUserIDs),
+			LatestSentSeq: result.LatestReadState.LatestSentSeq,
+			ReadByUserIDs: result.LatestReadState.ReadByUserIDs,
+			ReadCount:     len(result.LatestReadState.ReadByUserIDs),
 		}
 	}
 	respondOK(c, resp)
@@ -153,15 +141,10 @@ func (h *ConversationHandler) ListGroups(c *gin.Context) {
 	}
 
 	res := make([]dto.ConversationItemResp, 0, len(conversations))
-	publicIDs, err := messageSenderPublicIDs(requestContext(c), h.userService, conversations)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
 	for _, conversation := range conversations {
 		item := buildConversationItemResp(conversation)
 		if conversation.LastMessage != nil {
-			message := buildMessageResp(*conversation.LastMessage, publicIDs)
+			message := buildMessageResp(*conversation.LastMessage)
 			item.LastMessage = &message
 		}
 		res = append(res, item)
@@ -172,7 +155,7 @@ func (h *ConversationHandler) ListGroups(c *gin.Context) {
 
 // CreateGroup 创建群聊
 // @Summary 创建群聊
-// @Description 创建一个群聊并可携带初始成员，member_ids 使用用户 public_id。
+// @Description 创建一个群聊并可携带初始成员，member_ids 使用用户 user_id。
 // @Tags 会话
 // @Accept json
 // @Produce json
@@ -190,13 +173,7 @@ func (h *ConversationHandler) CreateGroup(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	memberIDs, err := resolveUserPKs(requestContext(c), h.userService, req.MemberIDs)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	conversation, err := h.conversationService.CreateGroup(requestContext(c), userPK, req.Name, memberIDs)
+	conversation, err := h.conversationService.CreateGroup(requestContext(c), userPK, req.Name, req.MemberIDs)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -262,7 +239,8 @@ func (h *ConversationHandler) ListGroupMembers(c *gin.Context) {
 	items := make([]dto.GroupMemberResp, 0, len(members))
 	for _, member := range members {
 		items = append(items, dto.GroupMemberResp{
-			PublicID: member.UserID,
+			UserID:   member.UserID,
+			Avatar:   member.Avatar,
 			Username: member.Username,
 			Role:     member.Role,
 			Online:   member.Online,
@@ -307,7 +285,7 @@ func (h *ConversationHandler) UpdateGroupName(c *gin.Context) {
 
 // InviteGroupMembers 邀请成员入群
 // @Summary 邀请成员入群
-// @Description 邀请用户加入指定群聊，member_ids 使用用户 public_id。
+// @Description 邀请用户加入指定群聊，member_ids 使用用户 user_id。
 // @Tags 会话
 // @Accept json
 // @Produce json
@@ -332,13 +310,7 @@ func (h *ConversationHandler) InviteGroupMembers(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	memberIDs, err := resolveUserPKs(requestContext(c), h.userService, req.MemberIDs)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	if err := h.conversationService.InviteGroupMembers(requestContext(c), userPK, conversationID, memberIDs); err != nil {
+	if err := h.conversationService.InviteGroupMembers(requestContext(c), userPK, conversationID, req.MemberIDs); err != nil {
 		respondError(c, err)
 		return
 	}
@@ -352,7 +324,7 @@ func (h *ConversationHandler) InviteGroupMembers(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "群会话ID"
-// @Param user_id path int true "成员用户 public_id"
+// @Param user_id path int true "成员用户 user_id"
 // @Success 200 {object} response.Response "操作成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未认证"
@@ -366,49 +338,15 @@ func (h *ConversationHandler) RemoveGroupMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	memberPublicID, ok := parseUintParam(c, "user_id", "invalid member id")
+	memberID, ok := parseUintParam(c, "user_id", "invalid member id")
 	if !ok {
 		return
 	}
-	memberPK, err := h.userService.ResolveIDByPublicID(requestContext(c), memberPublicID)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	if err := h.conversationService.RemoveGroupMember(requestContext(c), userPK, conversationID, memberPK); err != nil {
+	if err := h.conversationService.RemoveGroupMember(requestContext(c), userPK, conversationID, memberID); err != nil {
 		respondError(c, err)
 		return
 	}
 	respondOK(c, nil)
-}
-
-func resolveUserPKs(ctx context.Context, userService service.UserService, publicIDs []uint64) ([]uint64, error) {
-	result := make([]uint64, 0, len(publicIDs))
-	for _, publicID := range publicIDs {
-		userID, err := userService.ResolveIDByPublicID(ctx, publicID)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, userID)
-	}
-	return result, nil
-}
-
-func messageSenderPublicIDs(ctx context.Context, userService service.UserService, conversations []service.ConversationSummary) (map[uint64]uint64, error) {
-	senderIDs := make([]uint64, 0, len(conversations))
-	seen := make(map[uint64]struct{}, len(conversations))
-	for _, conversation := range conversations {
-		if conversation.LastMessage == nil || conversation.LastMessage.From == 0 {
-			continue
-		}
-		if _, ok := seen[conversation.LastMessage.From]; ok {
-			continue
-		}
-		seen[conversation.LastMessage.From] = struct{}{}
-		senderIDs = append(senderIDs, conversation.LastMessage.From)
-	}
-	return userService.MapPublicIDsByIDs(ctx, senderIDs)
 }
 
 // LeaveGroup 退出群聊

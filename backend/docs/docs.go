@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/api/v1/auth/login": {
             "post": {
-                "description": "使用 public_id 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过 ` + "`" + `Authorization: Bearer \u003caccess_token\u003e` + "`" + ` 传递。",
+                "description": "使用 user_id 和密码登录，返回 access token 和 refresh token。后续 HTTP 受保护接口必须通过 ` + "`" + `Authorization: Bearer \u003caccess_token\u003e` + "`" + ` 传递。",
                 "consumes": [
                     "application/json"
                 ],
@@ -185,7 +185,7 @@ const docTemplate = `{
         },
         "/api/v1/auth/register": {
             "post": {
-                "description": "用户注册，成功后返回当前账号的 public_id。",
+                "description": "用户注册，成功后返回当前账号的 user_id。",
                 "consumes": [
                     "application/json"
                 ],
@@ -344,7 +344,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建一个群聊并可携带初始成员，member_ids 使用用户 public_id。",
+                "description": "创建一个群聊并可携带初始成员，member_ids 使用用户 user_id。",
                 "consumes": [
                     "application/json"
                 ],
@@ -559,7 +559,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "邀请用户加入指定群聊，member_ids 使用用户 public_id。",
+                "description": "邀请用户加入指定群聊，member_ids 使用用户 user_id。",
                 "consumes": [
                     "application/json"
                 ],
@@ -805,7 +805,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "成员用户 public_id",
+                        "description": "成员用户 user_id",
                         "name": "user_id",
                         "in": "path",
                         "required": true
@@ -1166,7 +1166,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "向指定 public_id 用户发送好友申请；若存在反向待处理申请，则自动同意",
+                "description": "向指定 user_id 用户发送好友申请；若存在反向待处理申请，则自动同意",
                 "consumes": [
                     "application/json"
                 ],
@@ -1180,7 +1180,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "目标用户 public_id",
+                        "description": "目标用户 user_id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1430,7 +1430,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "删除当前用户与指定 public_id 用户的好友关系",
+                "description": "删除当前用户与指定 user_id 用户的好友关系",
                 "produces": [
                     "application/json"
                 ],
@@ -1441,7 +1441,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "好友用户 public_id",
+                        "description": "好友用户 user_id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1750,7 +1750,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "根据用户 public_id 查询基础信息与在线状态",
+                "description": "根据用户 user_id 查询基础信息与在线状态",
                 "produces": [
                     "application/json"
                 ],
@@ -1761,7 +1761,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "用户 public_id",
+                        "description": "用户 user_id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1878,7 +1878,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 }
             }
@@ -1923,7 +1923,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 },
                 "username": {
@@ -1957,7 +1957,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 },
                 "username": {
@@ -2013,7 +2013,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 },
                 "username": {
@@ -2080,7 +2080,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 },
                 "role": {
@@ -2111,7 +2111,7 @@ const docTemplate = `{
                 "latest_sent_seq": {
                     "type": "integer"
                 },
-                "read_by_public_ids": {
+                "read_by_user_ids": {
                     "type": "array",
                     "items": {
                         "type": "integer"
@@ -2154,7 +2154,7 @@ const docTemplate = `{
                 "extra": {
                     "type": "object"
                 },
-                "from_public_id": {
+                "from_user_id": {
                     "type": "integer"
                 },
                 "id": {
@@ -2227,7 +2227,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 },
                 "username": {
@@ -2239,13 +2239,13 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "password",
-                "public_id"
+                "user_id"
             ],
             "properties": {
                 "password": {
                     "type": "string"
                 },
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 }
             }
@@ -2307,7 +2307,7 @@ const docTemplate = `{
         "dto.UserRegisterResp": {
             "type": "object",
             "properties": {
-                "public_id": {
+                "user_id": {
                     "type": "integer"
                 }
             }

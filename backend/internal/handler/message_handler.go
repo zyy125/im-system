@@ -65,19 +65,13 @@ func (h *MessageHandler) History(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	publicIDs, err := h.userService.MapPublicIDsByIDs(requestContext(c), collectMessageSenderIDs(msgs))
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
 	var nextBeforeSeq uint64
 	if hasMore && len(msgs) > 0 {
 		nextBeforeSeq = msgs[0].Seq
 	}
 
 	respondOK(c, dto.MessageHistoryResp{
-		Messages:      buildMessageResps(msgs, publicIDs),
+		Messages:      buildMessageResps(msgs),
 		HasMore:       hasMore,
 		NextBeforeSeq: nextBeforeSeq,
 	})
@@ -121,12 +115,6 @@ func (h *MessageHandler) Sync(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	publicIDs, err := h.userService.MapPublicIDsByIDs(requestContext(c), collectMessageSenderIDs(msgs))
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
 	var maxReturnedSeq uint64
 	for _, msg := range msgs {
 		if msg.Seq > maxReturnedSeq {
@@ -135,7 +123,7 @@ func (h *MessageHandler) Sync(c *gin.Context) {
 	}
 
 	respondOK(c, dto.MessageSyncResp{
-		Messages:       buildMessageResps(msgs, publicIDs),
+		Messages:       buildMessageResps(msgs),
 		HasMore:        hasMore,
 		MaxReturnedSeq: maxReturnedSeq,
 	})

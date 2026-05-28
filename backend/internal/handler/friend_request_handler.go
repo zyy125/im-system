@@ -20,12 +20,12 @@ func NewFriendRequestHandler(friendRequestService service.FriendRequestService, 
 
 // Send 发送好友申请
 // @Summary 发送好友申请
-// @Description 向指定 public_id 用户发送好友申请；若存在反向待处理申请，则自动同意
+// @Description 向指定 user_id 用户发送好友申请；若存在反向待处理申请，则自动同意
 // @Tags 好友申请
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "目标用户 public_id"
+// @Param id path int true "目标用户 user_id"
 // @Param req body dto.SendFriendRequestReq false "附言"
 // @Success 200 {object} response.Response "发送成功"
 // @Failure 400 {object} response.Response "参数错误"
@@ -36,7 +36,7 @@ func NewFriendRequestHandler(friendRequestService service.FriendRequestService, 
 // @Router /api/v1/friend-requests/{id} [post]
 func (h *FriendRequestHandler) Send(c *gin.Context) {
 	userPK := currentUserPK(c)
-	targetPublicID, ok := parseUintParam(c, "id", "invalid target user id")
+	targetUserID, ok := parseUintParam(c, "id", "invalid target user id")
 	if !ok {
 		return
 	}
@@ -46,13 +46,7 @@ func (h *FriendRequestHandler) Send(c *gin.Context) {
 		return
 	}
 
-	targetPK, err := h.userService.ResolveIDByPublicID(requestContext(c), targetPublicID)
-	if err != nil {
-		respondError(c, err)
-		return
-	}
-
-	result, err := h.friendRequestService.Send(requestContext(c), userPK, targetPK, req.Message)
+	result, err := h.friendRequestService.Send(requestContext(c), userPK, targetUserID, req.Message)
 	if err != nil {
 		respondError(c, err)
 		return

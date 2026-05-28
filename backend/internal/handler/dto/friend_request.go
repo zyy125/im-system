@@ -7,7 +7,7 @@ type SendFriendRequestReq struct {
 }
 
 type FriendRequestUserResp struct {
-	PublicID uint64 `json:"public_id"`
+	UserID   uint64 `json:"user_id"`
 	Avatar   string `json:"avatar"`
 	Username string `json:"username"`
 	Online   bool   `json:"online"`

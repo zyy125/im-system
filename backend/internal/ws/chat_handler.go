@@ -52,16 +52,11 @@ func (h *chatSendHandler) HandleMessageSend(ctx context.Context, senderID uint64
 	if err != nil {
 		return nil, err
 	}
-	publicIDs, err := h.userService.MapPublicIDsByIDs(ctx, []uint64{saved.From})
+	sentPayload, err := MarshalEnvelope(EventTypeMessageSent, NewServerMessage(saved))
 	if err != nil {
 		return nil, err
 	}
-
-	sentPayload, err := MarshalEnvelope(EventTypeMessageSent, NewServerMessage(saved, publicIDs))
-	if err != nil {
-		return nil, err
-	}
-	createdPayload, err := MarshalEnvelope(EventTypeMessageCreated, NewServerMessage(saved, publicIDs))
+	createdPayload, err := MarshalEnvelope(EventTypeMessageCreated, NewServerMessage(saved))
 	if err != nil {
 		return nil, err
 	}
@@ -96,13 +91,9 @@ func (h *messageAckHandler) HandleMessageDelivered(ctx context.Context, userID u
 	if err != nil {
 		return nil, err
 	}
-	publicIDs, err := h.userService.MapPublicIDsByIDs(ctx, []uint64{userID})
-	if err != nil {
-		return nil, err
-	}
 	payload, err := MarshalEnvelope(EventTypeMessageDelivered, MessageDeliveredData{
 		ConversationID: req.ConversationID,
-		PublicID:       publicIDs[userID],
+		UserID:         userID,
 		DeliveredSeq:   req.DeliveredSeq,
 	})
 	if err != nil {
@@ -122,13 +113,9 @@ func (h *messageAckHandler) HandleMessageRead(ctx context.Context, userID uint64
 	if err != nil {
 		return nil, err
 	}
-	publicIDs, err := h.userService.MapPublicIDsByIDs(ctx, []uint64{userID})
-	if err != nil {
-		return nil, err
-	}
 	payload, err := MarshalEnvelope(EventTypeMessageRead, MessageReadData{
 		ConversationID: req.ConversationID,
-		PublicID:       publicIDs[userID],
+		UserID:         userID,
 		ReadSeq:        req.ReadSeq,
 	})
 	if err != nil {
