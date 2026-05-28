@@ -13,7 +13,7 @@ type MessageResp struct {
 	Seq            uint64             `json:"seq"`
 	Type           model.MessageType  `json:"type"`
 	Event          model.MessageEvent `json:"event"`
-	From           uint64             `json:"from"`
+	FromPublicID   uint64             `json:"from_public_id"`
 	SendTime       int64              `json:"send_time"`
 	Content        string             `json:"content"`
 	Extra          json.RawMessage    `json:"extra,omitempty" swaggertype:"object"`

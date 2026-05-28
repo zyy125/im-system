@@ -102,7 +102,7 @@ func (h *messageAckHandler) HandleMessageDelivered(ctx context.Context, userID u
 	}
 	payload, err := MarshalEnvelope(EventTypeMessageDelivered, MessageDeliveredData{
 		ConversationID: req.ConversationID,
-		UserID:         publicIDs[userID],
+		PublicID:       publicIDs[userID],
 		DeliveredSeq:   req.DeliveredSeq,
 	})
 	if err != nil {
@@ -128,7 +128,7 @@ func (h *messageAckHandler) HandleMessageRead(ctx context.Context, userID uint64
 	}
 	payload, err := MarshalEnvelope(EventTypeMessageRead, MessageReadData{
 		ConversationID: req.ConversationID,
-		UserID:         publicIDs[userID],
+		PublicID:       publicIDs[userID],
 		ReadSeq:        req.ReadSeq,
 	})
 	if err != nil {

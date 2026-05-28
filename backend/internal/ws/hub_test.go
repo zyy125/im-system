@@ -175,7 +175,7 @@ func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T)
 
 	onlineEvent := decodePresenceEvent(t, readHubPayload(t, friend.Send))
 	assert.Equal(t, EventTypePresenceChanged, onlineEvent.Type)
-	assert.Equal(t, uint64(100000001), onlineEvent.UserID)
+	assert.Equal(t, uint64(100000001), onlineEvent.PublicID)
 	assert.True(t, onlineEvent.Online)
 
 	assertNoUserID(t, presenceRepo.setOnline)
@@ -187,7 +187,7 @@ func TestHub_PresenceBroadcastsOnlyOnFirstConnectAndLastDisconnect(t *testing.T)
 	waitForUserID(t, presenceRepo.setOffline, 1)
 	offlineEvent := decodePresenceEvent(t, readHubPayload(t, friend.Send))
 	assert.Equal(t, EventTypePresenceChanged, offlineEvent.Type)
-	assert.Equal(t, uint64(100000001), offlineEvent.UserID)
+	assert.Equal(t, uint64(100000001), offlineEvent.PublicID)
 	assert.False(t, offlineEvent.Online)
 
 	hub.EnqueueUnregister(friend)
@@ -497,9 +497,9 @@ func decodeMessage(t *testing.T, payload []byte) ServerMessage {
 }
 
 type decodedPresenceEvent struct {
-	Type   string
-	UserID uint64
-	Online bool
+	Type     string
+	PublicID uint64
+	Online   bool
 }
 
 func decodePresenceEvent(t *testing.T, payload []byte) decodedPresenceEvent {
@@ -511,9 +511,9 @@ func decodePresenceEvent(t *testing.T, payload []byte) decodedPresenceEvent {
 	var data PresenceChangedData
 	require.NoError(t, json.Unmarshal(env.Data, &data))
 	return decodedPresenceEvent{
-		Type:   env.Type,
-		UserID: data.UserID,
-		Online: data.Online,
+		Type:     env.Type,
+		PublicID: data.PublicID,
+		Online:   data.Online,
 	}
 }
 

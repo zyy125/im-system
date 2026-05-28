@@ -126,8 +126,8 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 	}
 
 	payload, err := MarshalEnvelope(EventTypePresenceChanged, PresenceChangedData{
-		UserID: publicIDs[userID],
-		Online: online,
+		PublicID: publicIDs[userID],
+		Online:   online,
 	})
 	if err != nil {
 		logging.FromContext(ctx).With("user_id", userID).Error("marshal presence event failed", "error", err)

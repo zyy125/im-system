@@ -4,7 +4,7 @@ definitions:
     properties:
       online:
         type: boolean
-      user_id:
+      public_id:
         type: integer
     type: object
   dto.ConversationItemResp:
@@ -31,10 +31,10 @@ definitions:
     type: object
   dto.ConversationPeerResp:
     properties:
-      id:
-        type: integer
       online:
         type: boolean
+      public_id:
+        type: integer
       username:
         type: string
     type: object
@@ -55,7 +55,7 @@ definitions:
         type: integer
       online:
         type: boolean
-      user_id:
+      public_id:
         type: integer
       username:
         type: string
@@ -89,10 +89,10 @@ definitions:
     type: object
   dto.FriendRequestUserResp:
     properties:
-      id:
-        type: integer
       online:
         type: boolean
+      public_id:
+        type: integer
       username:
         type: string
     type: object
@@ -134,10 +134,10 @@ definitions:
     properties:
       online:
         type: boolean
+      public_id:
+        type: integer
       role:
         $ref: '#/definitions/model.ConversationMemberRole'
-      user_id:
-        type: integer
       username:
         type: string
     type: object
@@ -154,7 +154,7 @@ definitions:
     properties:
       latest_sent_seq:
         type: integer
-      read_by_user_ids:
+      read_by_public_ids:
         items:
           type: integer
         type: array
@@ -182,7 +182,7 @@ definitions:
         $ref: '#/definitions/model.MessageEvent'
       extra:
         type: object
-      from:
+      from_public_id:
         type: integer
       id:
         type: integer
@@ -227,10 +227,10 @@ definitions:
     type: object
   dto.UserInfoResp:
     properties:
-      id:
-        type: integer
       online:
         type: boolean
+      public_id:
+        type: integer
       username:
         type: string
     type: object

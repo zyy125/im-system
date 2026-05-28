@@ -40,7 +40,7 @@ type ServerMessage struct {
 	Seq            uint64             `json:"seq"`
 	Type           model.MessageType  `json:"type"`
 	Event          model.MessageEvent `json:"event"`
-	From           uint64             `json:"from"`
+	FromPublicID   uint64             `json:"from_public_id"`
 	SendTime       int64              `json:"send_time"`
 	Content        string             `json:"content"`
 	Extra          json.RawMessage    `json:"extra,omitempty"`
@@ -53,13 +53,13 @@ type SyncRequiredData struct {
 
 type MessageDeliveredData struct {
 	ConversationID uint64 `json:"conversation_id"`
-	UserID         uint64 `json:"user_id"`
+	PublicID       uint64 `json:"public_id"`
 	DeliveredSeq   uint64 `json:"delivered_seq"`
 }
 
 type MessageReadData struct {
 	ConversationID uint64 `json:"conversation_id"`
-	UserID         uint64 `json:"user_id"`
+	PublicID       uint64 `json:"public_id"`
 	ReadSeq        uint64 `json:"read_seq"`
 }
 
@@ -69,8 +69,8 @@ type ErrorData struct {
 }
 
 type PresenceChangedData struct {
-	UserID uint64 `json:"user_id"`
-	Online bool   `json:"online"`
+	PublicID uint64 `json:"public_id"`
+	Online   bool   `json:"online"`
 }
 
 func MarshalEnvelope(eventType string, data any) ([]byte, error) {
@@ -123,7 +123,7 @@ func NewServerMessage(msg model.Message, publicIDs map[uint64]uint64) ServerMess
 		Seq:            msg.Seq,
 		Type:           msg.Type,
 		Event:          msg.Event,
-		From:           publicIDs[msg.From],
+		FromPublicID:   publicIDs[msg.From],
 		SendTime:       msg.SendTime,
 		Content:        msg.Content,
 		Extra:          msg.Extra,

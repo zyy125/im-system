@@ -33,8 +33,8 @@ func (h *UserHandler) CheckUserOnline(c *gin.Context) {
 	}
 
 	res := dto.CheckUserOnlineResp{
-		UserID: user.PublicID,
-		Online: online,
+		PublicID: user.PublicID,
+		Online:   online,
 	}
 	respondOK(c, res)
 }

@@ -7,7 +7,6 @@
 ```json
 {
   "type": "message.created",
-  "version": 1,
   "data": {}
 }
 ```
@@ -25,7 +24,6 @@
 ```json
 {
   "type": "message.send",
-  "version": 1,
   "data": {
     "msg_id": "msg_1742970000000_abcd1234",
     "conversation_id": 1,
@@ -45,7 +43,6 @@
 ```json
 {
   "type": "message.delivered",
-  "version": 1,
   "data": {
     "conversation_id": 1,
     "delivered_seq": 123
@@ -62,7 +59,6 @@
 ```json
 {
   "type": "message.read",
-  "version": 1,
   "data": {
     "conversation_id": 1,
     "read_seq": 123
@@ -87,7 +83,6 @@
 ```json
 {
   "type": "message.created",
-  "version": 1,
   "data": {
     "id": 123,
     "msg_id": "msg_1742970000000_abcd1234",
@@ -95,7 +90,7 @@
     "seq": 456,
     "type": 1,
     "event": "",
-    "from": 9,
+    "from_public_id": 100000009,
     "send_time": 1742970000000,
     "content": "hello",
     "extra": null
@@ -110,10 +105,9 @@
 ```json
 {
   "type": "message.delivered",
-  "version": 1,
   "data": {
     "conversation_id": 1,
-    "user_id": 10,
+    "public_id": 100000010,
     "delivered_seq": 123
   }
 }
@@ -126,10 +120,9 @@
 ```json
 {
   "type": "message.read",
-  "version": 1,
   "data": {
     "conversation_id": 1,
-    "user_id": 10,
+    "public_id": 100000010,
     "read_seq": 123
   }
 }
@@ -140,18 +133,16 @@
 ### error / presence.changed
 
 - `error` 携带 `{code, message}`。
-- `presence.changed` 携带 `{user_id, online}`，只表示好友在线状态变化。
+- `presence.changed` 携带 `{public_id, online}`，只表示好友在线状态变化。
 
 ### sync.required
 
 ```json
 {
   "type": "sync.required",
-  "version": 1,
   "data": {
     "conversation_id": 1,
-    "reason": "pending_queue_full",
-    "retryable": true
+    "reason": "pending_queue_full"
   }
 }
 ```

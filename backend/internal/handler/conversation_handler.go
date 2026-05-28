@@ -125,9 +125,9 @@ func (h *ConversationHandler) Open(c *gin.Context) {
 	}
 	if result.LatestReadState != nil {
 		resp.LatestReadState = &dto.LatestReadStateResp{
-			LatestSentSeq: result.LatestReadState.LatestSentSeq,
-			ReadByUserIDs: result.LatestReadState.ReadByUserIDs,
-			ReadCount:     len(result.LatestReadState.ReadByUserIDs),
+			LatestSentSeq:   result.LatestReadState.LatestSentSeq,
+			ReadByPublicIDs: result.LatestReadState.ReadByUserIDs,
+			ReadCount:       len(result.LatestReadState.ReadByUserIDs),
 		}
 	}
 	respondOK(c, resp)
@@ -262,7 +262,7 @@ func (h *ConversationHandler) ListGroupMembers(c *gin.Context) {
 	items := make([]dto.GroupMemberResp, 0, len(members))
 	for _, member := range members {
 		items = append(items, dto.GroupMemberResp{
-			UserID:   member.UserID,
+			PublicID: member.UserID,
 			Username: member.Username,
 			Role:     member.Role,
 			Online:   member.Online,

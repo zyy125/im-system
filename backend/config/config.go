@@ -13,6 +13,7 @@ import (
 // Config 是整个应用的顶层配置结构，由 config.yaml 映射而来。
 type Config struct {
 	App      App      `mapstructure:"app"`
+	HTTP     HTTP     `mapstructure:"http"`
 	Mysql    Mysql    `mapstructure:"mysql"`
 	Redis    Redis    `mapstructure:"redis"`
 	JWT      JWT      `mapstructure:"jwt"`
@@ -24,6 +25,10 @@ type Config struct {
 type App struct {
 	Env      string `mapstructure:"env"`
 	HTTPAddr string `mapstructure:"http_addr"`
+}
+
+type HTTP struct {
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
 }
 
 // Mysql 保存 MySQL 连接串。
@@ -120,6 +125,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Presence.HeartbeatInterval >= c.Presence.TTL {
 		return errors.New("presence.heartbeat_interval must be smaller than presence.ttl")
+	}
+	if c.App.Env == "production" && len(c.HTTP.AllowedOrigins) == 0 {
+		return errors.New("http.allowed_origins is required in production")
+	}
+	for i, origin := range c.HTTP.AllowedOrigins {
+		c.HTTP.AllowedOrigins[i] = strings.TrimSpace(origin)
 	}
 	if c.App.Env == "production" && len(c.WS.AllowedOrigins) == 0 {
 		return errors.New("ws.allowed_origins is required in production")

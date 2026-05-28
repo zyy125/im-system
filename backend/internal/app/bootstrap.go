@@ -132,6 +132,8 @@ func buildRouter(hs *handlers, repos *repositories, cfg *config.Config) *gin.Eng
 		MessageHandler:       hs.messageHandler,
 		ConversationHandler:  hs.conversationHandler,
 		BlacklistRepo:        repos.blacklistRepo,
+		AppCfg:               &cfg.App,
+		HTTPCfg:              &cfg.HTTP,
 		JwtCfg:               &cfg.JWT,
 	})
 }

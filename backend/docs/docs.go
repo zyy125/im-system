@@ -1878,7 +1878,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "user_id": {
+                "public_id": {
                     "type": "integer"
                 }
             }
@@ -1920,11 +1920,11 @@ const docTemplate = `{
         "dto.ConversationPeerResp": {
             "type": "object",
             "properties": {
-                "id": {
-                    "type": "integer"
-                },
                 "online": {
                     "type": "boolean"
+                },
+                "public_id": {
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string"
@@ -1957,7 +1957,7 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
-                "user_id": {
+                "public_id": {
                     "type": "integer"
                 },
                 "username": {
@@ -2010,11 +2010,11 @@ const docTemplate = `{
         "dto.FriendRequestUserResp": {
             "type": "object",
             "properties": {
-                "id": {
-                    "type": "integer"
-                },
                 "online": {
                     "type": "boolean"
+                },
+                "public_id": {
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string"
@@ -2080,11 +2080,11 @@ const docTemplate = `{
                 "online": {
                     "type": "boolean"
                 },
+                "public_id": {
+                    "type": "integer"
+                },
                 "role": {
                     "$ref": "#/definitions/model.ConversationMemberRole"
-                },
-                "user_id": {
-                    "type": "integer"
                 },
                 "username": {
                     "type": "string"
@@ -2111,7 +2111,7 @@ const docTemplate = `{
                 "latest_sent_seq": {
                     "type": "integer"
                 },
-                "read_by_user_ids": {
+                "read_by_public_ids": {
                     "type": "array",
                     "items": {
                         "type": "integer"
@@ -2154,7 +2154,7 @@ const docTemplate = `{
                 "extra": {
                     "type": "object"
                 },
-                "from": {
+                "from_public_id": {
                     "type": "integer"
                 },
                 "id": {
@@ -2224,11 +2224,11 @@ const docTemplate = `{
         "dto.UserInfoResp": {
             "type": "object",
             "properties": {
-                "id": {
-                    "type": "integer"
-                },
                 "online": {
                     "type": "boolean"
+                },
+                "public_id": {
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string"

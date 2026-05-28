@@ -97,7 +97,7 @@ func queryInt(c *gin.Context, key string, defaultValue int) int {
 
 func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 	return dto.UserInfoResp{
-		ID:       user.PublicID,
+		PublicID: user.PublicID,
 		Username: user.Username,
 		Online:   online,
 	}
@@ -105,7 +105,7 @@ func buildUserInfoResp(user model.User, online bool) dto.UserInfoResp {
 
 func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 	return dto.FriendInfoResp{
-		UserID:         friend.UserID,
+		PublicID:       friend.UserID,
 		Username:       friend.Username,
 		Online:         friend.Online,
 		ConversationID: friend.ConversationID,
@@ -114,7 +114,7 @@ func buildFriendInfoResp(friend service.FriendInfo) dto.FriendInfoResp {
 
 func buildFriendRequestUserResp(user service.FriendRequestUser) dto.FriendRequestUserResp {
 	return dto.FriendRequestUserResp{
-		ID:       user.ID,
+		PublicID: user.ID,
 		Username: user.Username,
 		Online:   user.Online,
 	}
@@ -129,7 +129,7 @@ func buildConversationItemResp(conversation service.ConversationSummary) dto.Con
 	}
 	if conversation.Peer != nil {
 		item.Peer = &dto.ConversationPeerResp{
-			ID:       conversation.Peer.ID,
+			PublicID: conversation.Peer.ID,
 			Username: conversation.Peer.Username,
 			Online:   conversation.Peer.Online,
 		}
@@ -145,7 +145,7 @@ func buildMessageResp(msg model.Message, publicIDs map[uint64]uint64) dto.Messag
 		Seq:            msg.Seq,
 		Type:           msg.Type,
 		Event:          msg.Event,
-		From:           publicIDForUser(msg.From, publicIDs),
+		FromPublicID:   publicIDForUser(msg.From, publicIDs),
 		SendTime:       msg.SendTime,
 		Content:        msg.Content,
 		Extra:          msg.Extra,

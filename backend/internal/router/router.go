@@ -24,11 +24,16 @@ type InitRouterParams struct {
 	ConversationHandler  *handler.ConversationHandler
 
 	BlacklistRepo repository.TokenBlacklistRepo
+	AppCfg        *config.App
+	HTTPCfg       *config.HTTP
 	JwtCfg        *config.JWT
 }
 
 func InitRouter(params *InitRouterParams) *gin.Engine {
 	r := gin.New()
+	if params.AppCfg != nil && params.HTTPCfg != nil {
+		r.Use(middleware.CORS(params.AppCfg.Env, params.HTTPCfg.AllowedOrigins))
+	}
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.Recovery())
 

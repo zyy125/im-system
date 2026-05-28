@@ -7,6 +7,11 @@ app:
   env: "development"
   http_addr: ":8080"
 
+http:
+  allowed_origins:
+    - "http://localhost:4174"
+    - "http://127.0.0.1:4174"
+
 redis:
   addr: "localhost:6379"
   password: ""
@@ -16,7 +21,9 @@ mysql:
   dsn: "root:123456@tcp(localhost:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
 
 ws:
-  allowed_origins: []
+  allowed_origins:
+    - "http://localhost:4174"
+    - "http://127.0.0.1:4174"
 
 presence:
   ttl: "90s"
