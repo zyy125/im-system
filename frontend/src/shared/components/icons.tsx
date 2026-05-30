@@ -71,3 +71,52 @@ export function BellIcon(props: IconProps) {
     </svg>
   )
 }
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <path d="M4 20h4.25l9.4-9.4a1.8 1.8 0 0 0 0-2.55l-1.7-1.7a1.8 1.8 0 0 0-2.55 0L4 15.75V20Z" />
+      <path d="m12.25 7.75 4 4" />
+    </svg>
+  )
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <path d="M5 18.5c.24-2.1 2.06-3.75 4.25-3.75h1.5c2.2 0 4.01 1.65 4.25 3.75" />
+      <circle cx="10" cy="8.5" r="3.25" />
+      <path d="M16 15.5c.34-.54.54-1.18.54-1.87 0-1.94-1.56-3.51-3.49-3.53" />
+      <path d="M17.5 18.5c-.12-1.06-.64-2.01-1.42-2.7" />
+    </svg>
+  )
+}
+
+export function SparklesIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <path d="m12 4 1.35 3.65L17 9l-3.65 1.35L12 14l-1.35-3.65L7 9l3.65-1.35L12 4Z" />
+      <path d="m18.5 14 .7 1.8L21 16.5l-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" />
+      <path d="m6 15 .9 2.35L9.25 18l-2.35.65L6 21l-.9-2.35L2.75 18l2.35-.65L6 15Z" />
+    </svg>
+  )
+}
+
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  )
+}
+
+export function AlertTriangleIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <path d="M10.45 4.87 3.9 16.2A2 2 0 0 0 5.63 19h12.74a2 2 0 0 0 1.73-2.8L13.55 4.87a2 2 0 0 0-3.1 0Z" />
+      <path d="M12 9v4.25" />
+      <circle cx="12" cy="16.75" r=".75" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}

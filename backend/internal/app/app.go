@@ -13,12 +13,14 @@ import (
 	"github.com/zyy125/im-system/config"
 	"github.com/zyy125/im-system/internal/infra"
 	"github.com/zyy125/im-system/internal/logging"
+	"github.com/zyy125/im-system/internal/monitoring"
 	"github.com/zyy125/im-system/internal/ws"
 )
 
 type App struct {
 	Router      *gin.Engine
 	Server      *http.Server
+	DebugServer *http.Server
 	Hub         *ws.Hub
 	RedisClient *redis.Client
 	SQLDB       *sql.DB
@@ -46,7 +48,7 @@ func (a *App) Start(ctx context.Context) error {
 		go a.Hub.Run(hubCtx)
 	}
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		err := a.Server.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -55,6 +57,16 @@ func (a *App) Start(ctx context.Context) error {
 		}
 		errCh <- nil
 	}()
+	if a.DebugServer != nil {
+		go func() {
+			err := a.DebugServer.ListenAndServe()
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+				return
+			}	
+			errCh <- nil
+		}()
+	}
 
 	select {
 	case err := <-errCh:
@@ -87,6 +99,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 				if shutdownErr == nil {
 					shutdownErr = ctx.Err()
 				}
+			}
+		}
+		if a.DebugServer != nil {
+			if err := a.DebugServer.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) && shutdownErr == nil {
+				shutdownErr = err
 			}
 		}
 		if a.Server != nil {
@@ -122,26 +139,37 @@ func InitApp(cfg *config.Config, ctx context.Context) (*App, error) {
 		return nil, err
 	}
 
-	repos := initRepositories(cfg, db, rdb)
+	metrics := monitoring.NewRuntime(nil, sqlDB)
+	repos := initRepositories(cfg, db, rdb, metrics.RedisMetrics())
 	svcs := initServices(cfg, repos)
 
 	rt, err := initRealtime(cfg, repos, svcs)
 	if err != nil {
 		return nil, err
 	}
+	metrics.AttachHub(rt.hub)
 	hs := initHandlers(cfg, repos, rt, svcs)
-	engine := buildRouter(hs, repos, cfg)
+	engine := buildRouter(hs, repos, cfg, metrics)
 
 	server := &http.Server{
 		Addr:    cfg.App.HTTPAddr,
 		Handler: engine,
 	}
+	debugServer := monitoring.NewServer(cfg.Monitor, metrics, rt.hub)
 
-	logging.With("http_addr", cfg.App.HTTPAddr, "env", cfg.App.Env).Info("application initialized")
+	logging.With(
+		"http_addr", cfg.App.HTTPAddr,
+		"debug_addr", cfg.Monitor.Addr,
+		"metrics_enabled", cfg.Monitor.EnableMetrics,
+		"debug_hub_enabled", cfg.Monitor.EnableDebugHub,
+		"pprof_enabled", cfg.Monitor.EnablePprof,
+		"env", cfg.App.Env,
+	).Info("application initialized")
 
 	return &App{
 		Router:      engine,
 		Server:      server,
+		DebugServer: debugServer,
 		Hub:         rt.hub,
 		RedisClient: rdb,
 		SQLDB:       sqlDB,

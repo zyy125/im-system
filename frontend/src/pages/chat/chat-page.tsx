@@ -30,11 +30,13 @@ import { AvatarBadge } from '@/shared/components/avatar-badge'
 import { ConfirmDialog } from '@/shared/components/confirm-dialog'
 import { useToast } from '@/shared/components/toast-provider'
 import {
+  AddUserIcon,
   BellIcon,
   ChatBubbleIcon,
   ContactsIcon,
   LogoutIcon,
   MessageIcon,
+  SparklesIcon,
   SearchIcon,
 } from '@/shared/components/icons'
 import type { GroupDetail, GroupMember, MessageItem, UserProfile } from '@/shared/types/domain'
@@ -589,7 +591,15 @@ export function ChatPage() {
                         )
                       }
                     >
-                      <strong>添加好友</strong>
+                      <span className="contacts-tool-card__main">
+                        <span className="contacts-tool-card__icon">
+                          <AddUserIcon />
+                        </span>
+                        <span className="contacts-tool-card__copy">
+                          <strong>添加好友</strong>
+                          <span>发起好友申请</span>
+                        </span>
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -604,7 +614,15 @@ export function ChatPage() {
                         )
                       }
                     >
-                      <strong>我的申请</strong>
+                      <span className="contacts-tool-card__main">
+                        <span className="contacts-tool-card__icon contacts-tool-card__icon--muted">
+                          <BellIcon />
+                        </span>
+                        <span className="contacts-tool-card__copy">
+                          <strong>我的申请</strong>
+                          <span>查看处理进度</span>
+                        </span>
+                      </span>
                       {requestCount > 0 ? (
                         <span className="contacts-tool-card__badge">{requestCount}</span>
                       ) : null}
@@ -658,7 +676,15 @@ export function ChatPage() {
                       }
                       onClick={() => setGroupCreateOpen(true)}
                     >
-                      <strong>新建群聊</strong>
+                      <span className="contacts-tool-card__main">
+                        <span className="contacts-tool-card__icon">
+                          <SparklesIcon />
+                        </span>
+                        <span className="contacts-tool-card__copy">
+                          <strong>新建群聊</strong>
+                          <span>创建新的群会话</span>
+                        </span>
+                      </span>
                     </button>
                   </section>
 

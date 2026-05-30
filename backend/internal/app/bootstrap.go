@@ -5,6 +5,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/zyy125/im-system/config"
 	"github.com/zyy125/im-system/internal/handler"
+	"github.com/zyy125/im-system/internal/monitoring"
 	"github.com/zyy125/im-system/internal/repository"
 	"github.com/zyy125/im-system/internal/router"
 	"github.com/zyy125/im-system/internal/service"
@@ -56,18 +57,18 @@ type handlers struct {
 	conversationHandler  *handler.ConversationHandler
 }
 
-func initRepositories(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *repositories {
+func initRepositories(cfg *config.Config, db *gorm.DB, rdb *redis.Client, redisMetrics repository.RedisMetricsRecorder) *repositories {
 	return &repositories{
 		userRepo:           repository.NewUserRepo(db),
-		blacklistRepo:      repository.NewTokenBlacklistRepo(rdb),
-		refreshSessionRepo: repository.NewRefreshSessionRepo(rdb),
-		presenceRepo:       repository.NewPresenceRepo(rdb, cfg.Presence.TTL),
+		blacklistRepo:      repository.NewTokenBlacklistRepoWithMetrics(rdb, redisMetrics),
+		refreshSessionRepo: repository.NewRefreshSessionRepoWithMetrics(rdb, redisMetrics),
+		presenceRepo:       repository.NewPresenceRepoWithMetrics(rdb, cfg.Presence.TTL, redisMetrics),
 		msgRepo:            repository.NewMessageRepo(db),
 		friendRepo:         repository.NewFriendRepo(db),
 		friendRequestRepo:  repository.NewFriendRequestRepo(db),
 		conversationRepo:   repository.NewConversationRepo(db),
 		messageTxManager:   repository.NewMessageTxManager(db),
-		messageStateRepo:   repository.NewMessageStateRepo(rdb),
+		messageStateRepo:   repository.NewMessageStateRepoWithMetrics(rdb, redisMetrics),
 		redisClient:        rdb,
 	}
 }
@@ -124,7 +125,11 @@ func initHandlers(cfg *config.Config, repos *repositories, rt *realtimeComponent
 	}
 }
 
-func buildRouter(hs *handlers, repos *repositories, cfg *config.Config) *gin.Engine {
+func buildRouter(hs *handlers, repos *repositories, cfg *config.Config, metrics *monitoring.Runtime) *gin.Engine {
+	var monitoringMW gin.HandlerFunc
+	if metrics != nil {
+		monitoringMW = metrics.HTTPMiddleware()
+	}
 	return router.InitRouter(&router.InitRouterParams{
 		AuthHandler:          hs.authHandler,
 		AvatarHandler:        hs.avatarHandler,
@@ -139,6 +144,7 @@ func buildRouter(hs *handlers, repos *repositories, cfg *config.Config) *gin.Eng
 		AppCfg:               &cfg.App,
 		HTTPCfg:              &cfg.HTTP,
 		JwtCfg:               &cfg.JWT,
+		MonitoringMW:         monitoringMW,
 		StorageCfg:           &cfg.Storage,
 	})
 }

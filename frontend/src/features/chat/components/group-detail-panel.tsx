@@ -1,10 +1,16 @@
-import { AvatarBadge } from '@/shared/components/avatar-badge'
+import { useState } from 'react'
 import { GroupEditDialog } from '@/features/chat/components/group-edit-dialog'
 import { GroupInviteDialog } from '@/features/chat/components/group-invite-dialog'
+import { AvatarBadge } from '@/shared/components/avatar-badge'
 import { ConfirmDialog } from '@/shared/components/confirm-dialog'
+import {
+  AddUserIcon,
+  AlertTriangleIcon,
+  ArrowRightIcon,
+  PencilIcon,
+} from '@/shared/components/icons'
 import { SlidePanel } from '@/shared/components/slide-panel'
 import type { GroupDetail, GroupMember } from '@/shared/types/domain'
-import { useState } from 'react'
 
 const roleLabel = (role: number) => {
   switch (role) {
@@ -31,7 +37,13 @@ const roleTone = (role: number) => {
 interface GroupDetailPanelProps {
   detail: GroupDetail | null
   members: GroupMember[]
-  friends: Array<{ userId: number; username: string; avatar: string; online: boolean; conversationId: number }>
+  friends: Array<{
+    userId: number
+    username: string
+    avatar: string
+    online: boolean
+    conversationId: number
+  }>
   open: boolean
   onClose: () => void
   onRename: (name: string) => Promise<void> | void
@@ -85,9 +97,9 @@ export function GroupDetailPanel({
       subtitle={`成员 ${detail.memberCount} · ${roleLabel(detail.myRole)}`}
       onClose={onClose}
     >
-      <div className="stack-sections">
-        <section className="group-overview-card">
-          <div className="profile-panel group-overview-card__profile">
+      <div className="group-detail-panel">
+        <section className="group-detail-card">
+          <div className="group-detail-card__hero">
             <AvatarBadge
               name={detail.name}
               avatar={detail.avatar}
@@ -95,80 +107,106 @@ export function GroupDetailPanel({
               shape="round"
               tone="group"
             />
-            <div className="profile-panel__info">
+            <div className="group-detail-card__copy">
               <strong>{detail.name}</strong>
-              <span>这是你当前查看的群聊资料页</span>
+              <span className="group-detail-card__eyebrow">账号 ID：{detail.id}</span>
+              <div className="group-detail-card__tags">
+                <span className="group-detail-tag group-detail-tag--accent">
+                  {roleLabel(detail.myRole)}
+                </span>
+                <span className="group-detail-tag">已实名认证</span>
+              </div>
             </div>
           </div>
 
-          <div className="group-stat-grid">
-            <div className="group-stat-card">
+          <div className="group-detail-card__stats">
+            <div className="group-detail-card__stat">
               <span>我的角色</span>
               <strong>{roleLabel(detail.myRole)}</strong>
             </div>
-            <div className="group-stat-card">
-              <span>群成员</span>
+            <div className="group-detail-card__stat">
+              <span>成员数量</span>
               <strong>{detail.memberCount}</strong>
             </div>
           </div>
         </section>
 
         {(canRename || canInvite) ? (
-          <section className="group-section">
-            <div className="group-section__header">
-              <strong>群管理</strong>
-              <span>常用操作</span>
+          <section className="group-detail-block">
+            <div className="group-detail-block__header">
+              <strong>常用操作</strong>
             </div>
-            <div className="group-action-grid">
+            <div className="group-detail-list">
               {canRename ? (
                 <button
                   type="button"
-                  className="group-action-card"
+                  className="group-detail-list__item"
                   onClick={() => setRenameOpen(true)}
                 >
-                  <strong>修改群名</strong>
-                  <span>更新会话和群资料中的名称</span>
+                  <span className="group-detail-list__icon">
+                    <PencilIcon />
+                  </span>
+                  <span className="group-detail-list__copy">
+                    <strong>修改昵称</strong>
+                    <span>编辑你在群内的昵称</span>
+                  </span>
+                  <ArrowRightIcon />
                 </button>
               ) : null}
+
               {canInvite ? (
                 <button
                   type="button"
-                  className="group-action-card"
+                  className="group-detail-list__item"
                   onClick={() => setInviteOpen(true)}
                 >
-                  <strong>邀请成员</strong>
-                  <span>从好友列表中选择成员加入群聊</span>
+                  <span className="group-detail-list__icon">
+                    <AddUserIcon />
+                  </span>
+                  <span className="group-detail-list__copy">
+                    <strong>邀请成员</strong>
+                    <span>从好友列表中选择成员加入</span>
+                  </span>
+                  <ArrowRightIcon />
                 </button>
               ) : null}
             </div>
           </section>
         ) : null}
 
-        <section className="group-section">
-          <div className="group-section__header">
+        <section className="group-detail-block">
+          <div className="group-detail-block__header">
             <strong>成员列表</strong>
-            <span>{members.length} 人</span>
           </div>
-          <div className="member-list member-list--group">
-            {members.map((member) => (
-              <div key={member.userId} className="member-list__item member-list__item--rich">
+          <div className="group-member-card">
+            {members.map((member, index) => (
+              <div
+                key={member.userId}
+                className={
+                  index === members.length - 1
+                    ? 'group-member-card__row'
+                    : 'group-member-card__row group-member-card__row--bordered'
+                }
+              >
                 <AvatarBadge
                   name={member.username}
                   avatar={member.avatar}
                   online={member.online}
                   shape="round"
                 />
-                <div className="member-list__meta">
+                <div className="group-member-card__meta">
                   <strong>{member.username}</strong>
-                  <div className="member-list__meta-row">
-                    <span className={`member-role-chip ${roleTone(member.role)}`}>{roleLabel(member.role)}</span>
-                    <span>{member.online ? '在线' : '离线'}</span>
+                  <div className="group-member-card__subline">
+                    <span className={`member-role-chip ${roleTone(member.role)}`}>
+                      {roleLabel(member.role)}
+                    </span>
+                    <span>{member.online ? (member.role === 1 ? '你' : '在线') : '未实名'}</span>
                   </div>
                 </div>
                 {canDismiss && member.role !== 1 ? (
                   <button
                     type="button"
-                    className="text-link member-list__action"
+                    className="group-member-card__action"
                     onClick={() => setMemberToRemove(member)}
                   >
                     移除
@@ -180,30 +218,40 @@ export function GroupDetailPanel({
         </section>
 
         {(canLeave || canDismiss) ? (
-          <section className="group-section group-section--danger">
-            <div className="group-section__header">
+          <section className="group-detail-block">
+            <div className="group-detail-block__header">
               <strong>危险操作</strong>
-              <span>请谨慎执行</span>
             </div>
-            <div className="group-action-grid">
+            <div className="group-detail-list group-detail-list--danger">
               {canLeave ? (
                 <button
                   type="button"
-                  className="group-action-card"
+                  className="group-detail-list__item group-detail-list__item--neutral"
                   onClick={() => setLeaveConfirmOpen(true)}
                 >
-                  <strong>退出群聊</strong>
-                  <span>退出后将不再接收这个群的新消息</span>
+                  <span className="group-detail-list__icon group-detail-list__icon--neutral">
+                    <ArrowRightIcon />
+                  </span>
+                  <span className="group-detail-list__copy">
+                    <strong>退出群聊</strong>
+                    <span>退出后将不再接收该群的新消息</span>
+                  </span>
                 </button>
               ) : null}
+
               {canDismiss ? (
                 <button
                   type="button"
-                  className="group-action-card group-action-card--danger"
+                  className="group-detail-list__item group-detail-list__item--danger"
                   onClick={() => setDismissConfirmOpen(true)}
                 >
-                  <strong>解散群聊</strong>
-                  <span>解散后该群不可恢复，请谨慎操作</span>
+                  <span className="group-detail-list__icon group-detail-list__icon--danger">
+                    <AlertTriangleIcon />
+                  </span>
+                  <span className="group-detail-list__copy">
+                    <strong>解散群聊</strong>
+                    <span>解散后成员和消息关系将终止</span>
+                  </span>
                 </button>
               ) : null}
             </div>
@@ -282,11 +330,7 @@ export function GroupDetailPanel({
         <ConfirmDialog
           open={Boolean(memberToRemove)}
           title="移除成员"
-          description={
-            memberToRemove
-              ? `确认将 ${memberToRemove.username} 移出当前群聊吗？`
-              : ''
-          }
+          description={memberToRemove ? `确认将 ${memberToRemove.username} 移出当前群聊吗？` : ''}
           confirmText="确认移除"
           tone="danger"
           onClose={() => setMemberToRemove(null)}

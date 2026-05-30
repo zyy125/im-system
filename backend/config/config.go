@@ -14,6 +14,7 @@ import (
 type Config struct {
 	App      App      `mapstructure:"app"`
 	HTTP     HTTP     `mapstructure:"http"`
+	Monitor  Monitor  `mapstructure:"monitor"`
 	Storage  Storage  `mapstructure:"storage"`
 	Mysql    Mysql    `mapstructure:"mysql"`
 	Redis    Redis    `mapstructure:"redis"`
@@ -30,6 +31,13 @@ type App struct {
 
 type HTTP struct {
 	AllowedOrigins []string `mapstructure:"allowed_origins"`
+}
+
+type Monitor struct {
+	Addr           string `mapstructure:"addr"`
+	EnableMetrics  bool   `mapstructure:"enable_metrics"`
+	EnableDebugHub bool   `mapstructure:"enable_debug_hub"`
+	EnablePprof    bool   `mapstructure:"enable_pprof"`
 }
 
 type Storage struct {
@@ -102,6 +110,10 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.App.HTTPAddr) == "" {
 		return errors.New("app.http_addr is required")
 	}
+	if strings.TrimSpace(c.Monitor.Addr) == "" {
+		c.Monitor.Addr = "127.0.0.1:9090"
+	}
+	c.Monitor.Addr = strings.TrimSpace(c.Monitor.Addr)
 	if strings.TrimSpace(c.Mysql.DSN) == "" {
 		return errors.New("mysql.dsn is required")
 	}

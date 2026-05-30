@@ -1,0 +1,110 @@
+groups:
+  - name: im-system
+    rules:
+      - alert: IMBackendDown
+        expr: up{job="im-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: IM backend is down
+          description: Prometheus cannot scrape the IM backend metrics endpoint for at least 1 minute.
+
+      - alert: RedisExporterDown
+        expr: up{job="redis-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis exporter is down
+          description: Prometheus cannot scrape the Redis exporter for at least 1 minute.
+
+      - alert: MySQLExporterDown
+        expr: up{job="mysql-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MySQL exporter is down
+          description: Prometheus cannot scrape the MySQL exporter for at least 1 minute.
+
+      - alert: MySQLDown
+        expr: mysql_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: MySQL is down
+          description: mysqld_exporter cannot reach the MySQL instance for at least 1 minute.
+
+      - alert: HighHTTPP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(im_http_request_duration_seconds_bucket[5m]))) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: HTTP p95 latency is high
+          description: The overall backend HTTP p95 latency has stayed above 300ms for 5 minutes.
+
+      - alert: HubQueuePressure
+        expr: increase(im_hub_forward_queue_full_total[5m]) > 0 or increase(im_hub_pending_queue_full_total[5m]) > 0 or increase(im_hub_send_queue_full_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Hub delivery queues are under pressure
+          description: The WebSocket Hub has reported queue saturation in the last 5 minutes.
+
+      - alert: DBConnectionPoolWaits
+        expr: increase(im_db_wait_count_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: DB connection pool is saturated
+          description: The backend had to wait for database connections during the last 5 minutes.
+
+      - alert: RedisRejectedConnections
+        expr: increase(redis_rejected_connections_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis is rejecting client connections
+          description: Redis rejected one or more client connections in the last 5 minutes.
+
+      - alert: MySQLTooManyConnections
+        expr: mysql_global_status_threads_connected / clamp_min(mysql_global_variables_max_connections, 1) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: MySQL connection usage is high
+          description: MySQL threads connected have exceeded 80% of max_connections for 5 minutes.
+
+      - alert: MySQLSlowQueriesIncreasing
+        expr: increase(mysql_global_status_slow_queries[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: MySQL slow queries are increasing
+          description: MySQL recorded new slow queries during the last 5 minutes.
+
+      - alert: MySQLRowLockWaits
+        expr: increase(mysql_global_status_innodb_row_lock_waits[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: MySQL row lock waits detected
+          description: InnoDB row lock waits increased during the last 5 minutes.
+
+      - alert: RedisAppErrors
+        expr: sum by (module) (rate(im_redis_operations_total{result="error"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis application operations are failing
+          description: Application Redis operations in module {{ $labels.module }} have been failing for 5 minutes.

@@ -28,6 +28,7 @@ type InitRouterParams struct {
 	AppCfg        *config.App
 	HTTPCfg       *config.HTTP
 	JwtCfg        *config.JWT
+	MonitoringMW  gin.HandlerFunc
 	StorageCfg    *config.Storage
 }
 
@@ -36,11 +37,17 @@ func InitRouter(params *InitRouterParams) *gin.Engine {
 	if params.AppCfg != nil && params.HTTPCfg != nil {
 		r.Use(middleware.CORS(params.AppCfg.Env, params.HTTPCfg.AllowedOrigins))
 	}
+	if params.MonitoringMW != nil {
+		r.Use(params.MonitoringMW)
+	}
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.Recovery())
 	if params.StorageCfg != nil && params.StorageCfg.AvatarPublicBase != "" && params.StorageCfg.AvatarDir != "" {
 		r.Static(params.StorageCfg.AvatarPublicBase, params.StorageCfg.AvatarDir)
 	}
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
 	// Swagger 文档
 	if gin.Mode() != gin.ReleaseMode {

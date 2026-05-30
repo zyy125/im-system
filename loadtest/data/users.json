@@ -1,0 +1,20 @@
+[
+  {
+    "username": "user1",
+    "password": "123456",
+    "peer": {
+      "username": "user4",
+      "password": "123456",
+      "conversation_id": 2
+    }
+  },
+  {
+    "username": "user3",
+    "password": "123456",
+    "peer": {
+      "username": "user1",
+      "password": "123456",
+      "conversation_id": 2
+    }
+  }
+]

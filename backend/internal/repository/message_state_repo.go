@@ -19,7 +19,8 @@ type MessageStateRepo interface {
 }
 
 type messageStateRepo struct {
-	rdb *redis.Client
+	rdb     *redis.Client
+	metrics RedisMetricsRecorder
 }
 
 const releaseSeqInitLockScript = `
@@ -30,32 +31,58 @@ return 0
 `
 
 func NewMessageStateRepo(rdb *redis.Client) MessageStateRepo {
-	return &messageStateRepo{rdb: rdb}
+	return NewMessageStateRepoWithMetrics(rdb, nil)
+}
+
+func NewMessageStateRepoWithMetrics(rdb *redis.Client, metrics RedisMetricsRecorder) MessageStateRepo {
+	return &messageStateRepo{rdb: rdb, metrics: withRedisMetrics(metrics)}
 }
 
 func (r *messageStateRepo) HasNextSeq(ctx context.Context, conversationID uint64) (bool, error) {
+	start := time.Now()
 	count, err := r.rdb.Exists(ctx, nextSeqKey(conversationID)).Result()
 	if err != nil {
+		r.observe("exists", "error", time.Since(start))
 		return false, err
 	}
+	result := "ok"
+	if count == 0 {
+		result = "miss"
+	}
+	r.observe("exists", result, time.Since(start))
 	return count > 0, nil
 }
 
 func (r *messageStateRepo) InitNextSeqIfAbsent(ctx context.Context, conversationID, seq uint64) (bool, error) {
+	start := time.Now()
 	result, err := r.rdb.SetArgs(ctx, nextSeqKey(conversationID), strconv.FormatUint(seq, 10), redis.SetArgs{
 		Mode: "NX",
 	}).Result()
 	if err == redis.Nil {
+		r.observe("set_nx", "conflict", time.Since(start))
 		return false, nil
 	}
+	if err != nil {
+		r.observe("set_nx", "error", time.Since(start))
+		return result == "OK", err
+	}
+	status := "ok"
+	if result != "OK" {
+		status = "conflict"
+	}
+	r.observe("set_nx", status, time.Since(start))
 	return result == "OK", err
 }
 
 func (r *messageStateRepo) NextSeq(ctx context.Context, conversationID uint64) (uint64, error) {
-	return r.rdb.Incr(ctx, nextSeqKey(conversationID)).Uint64()
+	start := time.Now()
+	seq, err := r.rdb.Incr(ctx, nextSeqKey(conversationID)).Uint64()
+	r.observe("incr", resultFromErr(err), time.Since(start))
+	return seq, err
 }
 
 func (r *messageStateRepo) AcquireSeqInitLock(ctx context.Context, conversationID uint64, ttl time.Duration) (string, bool, error) {
+	start := time.Now()
 	token := newLockToken()
 	result, err := r.rdb.SetArgs(ctx, seqInitLockKey(conversationID), token, redis.SetArgs{
 		Mode: "NX",
@@ -63,11 +90,18 @@ func (r *messageStateRepo) AcquireSeqInitLock(ctx context.Context, conversationI
 	}).Result()
 
 	if err == redis.Nil {
+		r.observe("set_nx", "conflict", time.Since(start))
 		return "", false, nil
 	}
 	if err != nil {
+		r.observe("set_nx", "error", time.Since(start))
 		return "", false, err
 	}
+	status := "ok"
+	if result != "OK" {
+		status = "conflict"
+	}
+	r.observe("set_nx", status, time.Since(start))
 	return token, result == "OK", nil
 }
 
@@ -75,7 +109,17 @@ func (r *messageStateRepo) ReleaseSeqInitLock(ctx context.Context, conversationI
 	if token == "" {
 		return nil
 	}
-	return r.rdb.Eval(ctx, releaseSeqInitLockScript, []string{seqInitLockKey(conversationID)}, token).Err()
+	start := time.Now()
+	err := r.rdb.Eval(ctx, releaseSeqInitLockScript, []string{seqInitLockKey(conversationID)}, token).Err()
+	r.observe("eval", resultFromErr(err), time.Since(start))
+	return err
+}
+
+func (r *messageStateRepo) observe(op, result string, duration time.Duration) {
+	if r == nil || r.metrics == nil {
+		return
+	}
+	r.metrics.ObserveOperation("message_state", op, result, duration)
 }
 
 func nextSeqKey(conversationID uint64) string {

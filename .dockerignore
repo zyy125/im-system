@@ -1,0 +1,11 @@
+.git
+.gitignore
+.codex
+
+**/node_modules
+**/dist
+**/.DS_Store
+
+deploy/data
+monitoring/data
+

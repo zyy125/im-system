@@ -37,7 +37,7 @@ class ChatWsClient {
       return
     }
 
-    const url = new URL(env.apiBaseUrl.replace(/^http/, 'ws') + '/api/v1/ws/')
+    const url = new URL(`${env.wsBaseUrl}/api/v1/ws/`)
     url.searchParams.set('token', accessToken)
 
     this.manuallyClosed = false

@@ -13,7 +13,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
   return (
     <div className="chat-composer">
-      <div className="chat-composer__input">
+      <div className="chat-composer__surface">
         <textarea
           value={value}
           disabled={disabled}
@@ -26,9 +26,11 @@ export function ChatComposer({
             }
           }}
         />
-        <button type="button" disabled={disabled || !value.trim()} onClick={onSend}>
-          发送
-        </button>
+        <div className="chat-composer__actions">
+          <button type="button" disabled={disabled || !value.trim()} onClick={onSend}>
+            发送
+          </button>
+        </div>
       </div>
     </div>
   )

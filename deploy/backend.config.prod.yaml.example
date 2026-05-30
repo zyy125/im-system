@@ -1,0 +1,38 @@
+jwt:
+  secret: "replace-with-a-32-char-random-secret"
+  access_expiry: 2
+  refresh_expiry: 720
+
+app:
+  env: "production"
+  http_addr: ":8080"
+
+monitor:
+  addr: ":9090"
+  enable_metrics: true
+  enable_debug_hub: false
+  enable_pprof: false
+
+http:
+  allowed_origins:
+    - "https://im.example.com"
+
+storage:
+  avatar_dir: "./storage/avatars"
+  avatar_public_base: "/uploads/avatars"
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+mysql:
+  dsn: "im_user:change-this-db-password@tcp(mysql:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
+
+ws:
+  allowed_origins:
+    - "https://im.example.com"
+
+presence:
+  ttl: "90s"
+  heartbeat_interval: "30s"

@@ -1,0 +1,157 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: im-mysql
+    restart: unless-stopped
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: im-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: im-system-backend:latest
+    container_name: im-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend.config.prod.yaml:/app/config/config.yaml:ro
+      - avatar-data:/app/storage/avatars
+    expose:
+      - "8080"
+      - "9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+    image: im-system-gateway:latest
+    container_name: im-gateway
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: im-prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis-exporter:
+        condition: service_started
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.rules.prod.yml:/etc/prometheus/prometheus.rules.yml:ro
+      - prometheus-data:/prometheus
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.72.0
+    container_name: im-redis-exporter
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: ${REDIS_EXPORTER_REDIS_ADDR:-redis://redis:6379}
+      REDIS_PASSWORD: ${REDIS_EXPORTER_REDIS_PASSWORD:-}
+    expose:
+      - "9121"
+
+  mysql-exporter:
+    image: prom/mysqld-exporter:v0.17.2
+    container_name: im-mysql-exporter
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command:
+      - "--mysqld.address=${MYSQL_EXPORTER_ADDRESS:-mysql:3306}"
+      - "--mysqld.username=${MYSQL_EXPORTER_USER:-exporter}"
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: "${MYSQL_EXPORTER_PASSWORD:-change-this-exporter-password}"
+    expose:
+      - "9104"
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: im-grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      - prometheus
+      - redis-exporter
+      - mysql-exporter
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  mysql-data:
+  redis-data:
+  avatar-data:
+  prometheus-data:
+  grafana-data:

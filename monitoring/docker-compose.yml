@@ -1,0 +1,69 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: im-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.72.0
+    container_name: im-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: ${REDIS_EXPORTER_REDIS_ADDR:-redis://host.docker.internal:6379}
+      REDIS_PASSWORD: ${REDIS_EXPORTER_REDIS_PASSWORD:-}
+    ports:
+      - "9121:9121"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mysql-exporter:
+    image: prom/mysqld-exporter:v0.17.2
+    container_name: im-mysql-exporter
+    restart: unless-stopped
+    command:
+      - "--mysqld.address=${MYSQL_EXPORTER_ADDRESS:-host.docker.internal:3306}"
+      - "--mysqld.username=${MYSQL_EXPORTER_USER:-root}"
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: "${MYSQL_EXPORTER_PASSWORD:-123456}"
+    ports:
+      - "9104:9104"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: im-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - redis-exporter
+      - mysql-exporter
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  prometheus-data:
+  grafana-data:
