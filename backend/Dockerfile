@@ -2,6 +2,9 @@ FROM golang:1.25 AS builder
 
 WORKDIR /src
 
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
+
 COPY backend/go.mod backend/go.sum ./backend/
 WORKDIR /src/backend
 RUN go mod download
