@@ -5,6 +5,7 @@
 
 .env
 .env.*
+!deploy/.env.example
 *.log
 
 frontend/node_modules/
