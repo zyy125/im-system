@@ -24,3 +24,10 @@ backend/internal/e2e/storage/
 backend/docs/question.md
 backend/docs/interview-questions.md
 backend/docs/todo.md
+
+loadtest/data/users.json
+loadtest/data/users.all.txt
+loadtest/data/users.chat.json
+
+monitoring/.env
+monitoring/data/

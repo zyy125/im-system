@@ -1,38 +1,47 @@
+# JWT signing
 jwt:
   secret: "replace-with-a-32-char-random-secret"
   access_expiry: 2
   refresh_expiry: 720
 
+# Backend runtime
 app:
   env: "production"
   http_addr: ":8080"
 
+# Internal monitoring server
 monitor:
   addr: ":9090"
   enable_metrics: true
   enable_debug_hub: false
   enable_pprof: false
 
+# Browser origins allowed for HTTP APIs
 http:
   allowed_origins:
     - "https://im.example.com"
 
+# Avatar storage
 storage:
   avatar_dir: "./storage/avatars"
   avatar_public_base: "/uploads/avatars"
 
+# Redis connection used by backend
 redis:
   addr: "redis:6379"
   password: ""
   db: 0
 
+# MySQL business connection used by backend
 mysql:
   dsn: "im_user:change-this-db-password@tcp(mysql:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
 
+# Browser origins allowed for WebSocket handshake
 ws:
   allowed_origins:
     - "https://im.example.com"
 
+# Presence heartbeat behavior
 presence:
   ttl: "90s"
   heartbeat_interval: "30s"

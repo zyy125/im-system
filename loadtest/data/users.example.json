@@ -9,12 +9,30 @@
     }
   },
   {
-    "username": "bob",
+    "username": "charlie",
     "password": "secret123",
     "peer": {
-      "username": "alice",
+      "username": "dana",
       "password": "secret123",
-      "conversation_id": 1
+      "conversation_id": 2
+    }
+  },
+  {
+    "username": "eric",
+    "password": "secret123",
+    "peer": {
+      "username": "fiona",
+      "password": "secret123",
+      "conversation_id": 3
+    }
+  },
+  {
+    "username": "george",
+    "password": "secret123",
+    "peer": {
+      "username": "helen",
+      "password": "secret123",
+      "conversation_id": 4
     }
   }
 ]

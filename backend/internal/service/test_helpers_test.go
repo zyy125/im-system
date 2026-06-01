@@ -175,6 +175,7 @@ type stubConversationRepo struct {
 	updateLastAckedFn         func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	updateLastReadFn          func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	updateLastSentFn          func(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	advanceSenderCursorsFn    func(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	listGroupReadTargetsFn    func(ctx context.Context, conversationID, readerID, fromExclusive, toInclusive uint64) ([]uint64, error)
 	listReadReceiptUsersFn    func(ctx context.Context, conversationID, senderID, sentSeq uint64) ([]uint64, error)
 }
@@ -308,6 +309,13 @@ func (s *stubConversationRepo) UpdateLastReadMsgSeq(ctx context.Context, convers
 func (s *stubConversationRepo) UpdateLastSentMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error {
 	if s.updateLastSentFn != nil {
 		return s.updateLastSentFn(ctx, conversationID, userID, msgSeq)
+	}
+	return nil
+}
+
+func (s *stubConversationRepo) AdvanceSenderMessageCursors(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+	if s.advanceSenderCursorsFn != nil {
+		return s.advanceSenderCursorsFn(ctx, conversationID, userID, msgSeq)
 	}
 	return nil
 }

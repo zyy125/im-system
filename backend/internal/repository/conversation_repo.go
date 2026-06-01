@@ -50,6 +50,8 @@ type ConversationRepo interface {
 	UpdateLastReadMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	// UpdateLastSentMsgSeq 推进某个成员在会话中自己发出的最新业务消息 seq。
 	UpdateLastSentMsgSeq(ctx context.Context, conversationID, userID, msgSeq uint64) error
+	// AdvanceSenderMessageCursors 一次性推进发送者自己的 sent/acked/read 三个游标。
+	AdvanceSenderMessageCursors(ctx context.Context, conversationID, userID, msgSeq uint64) error
 	// ListGroupReadReceiptTargets 查询其最新一条业务消息刚刚落入已读区间内的群成员。
 	ListGroupReadReceiptTargets(ctx context.Context, conversationID, readerID, fromExclusive, toInclusive uint64) ([]uint64, error)
 	// ListReadReceiptUsersBySentSeq 查询已读到指定发送消息 seq 的活跃成员（排除发送者自己）。
@@ -359,22 +361,14 @@ func (r *conversationRepo) UpdateLastAckedMsgSeq(ctx context.Context, conversati
 
 	result := r.db.WithContext(ctx).
 		Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ? AND last_acked_msg_seq < ?", conversationID, userID, msgSeq).
-		Update("last_acked_msg_seq", msgSeq)
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Update("last_acked_msg_seq", monotonicMaxExpr("last_acked_msg_seq", msgSeq))
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		member, err := r.GetMember(ctx, conversationID, userID)
-		if err != nil {
-			return apperr.ConversationMemberNotFound()
-		}
-		if member.LastAckedMsgSeq >= msgSeq {
-			return nil
-		}
-		return apperr.ConversationMemberUpdateFailed()
+		return r.ensureConversationMemberExists(ctx, conversationID, userID)
 	}
-
 	return nil
 }
 
@@ -385,20 +379,13 @@ func (r *conversationRepo) UpdateLastReadMsgSeq(ctx context.Context, conversatio
 
 	result := r.db.WithContext(ctx).
 		Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ? AND last_read_msg_seq < ?", conversationID, userID, msgSeq).
-		Update("last_read_msg_seq", msgSeq)
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Update("last_read_msg_seq", monotonicMaxExpr("last_read_msg_seq", msgSeq))
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		member, err := r.GetMember(ctx, conversationID, userID)
-		if err != nil {
-			return err
-		}
-		if member.LastReadMsgSeq >= msgSeq {
-			return nil
-		}
-		return apperr.ConversationMemberUpdateFailed()
+		return r.ensureConversationMemberExists(ctx, conversationID, userID)
 	}
 	return nil
 }
@@ -410,20 +397,35 @@ func (r *conversationRepo) UpdateLastSentMsgSeq(ctx context.Context, conversatio
 
 	result := r.db.WithContext(ctx).
 		Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id = ? AND last_sent_msg_seq < ?", conversationID, userID, msgSeq).
-		Update("last_sent_msg_seq", msgSeq)
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Update("last_sent_msg_seq", monotonicMaxExpr("last_sent_msg_seq", msgSeq))
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		member, err := r.GetMember(ctx, conversationID, userID)
-		if err != nil {
-			return apperr.ConversationMemberNotFound()
-		}
-		if member.LastSentMsgSeq >= msgSeq {
-			return nil
-		}
-		return apperr.ConversationMemberUpdateFailed()
+		return r.ensureConversationMemberExists(ctx, conversationID, userID)
+	}
+	return nil
+}
+
+func (r *conversationRepo) AdvanceSenderMessageCursors(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+	if conversationID == 0 || userID == 0 || msgSeq == 0 {
+		return apperr.Required("conversation_id", "user_id", "msg_seq")
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Updates(map[string]any{
+			"last_sent_msg_seq":  monotonicMaxExpr("last_sent_msg_seq", msgSeq),
+			"last_acked_msg_seq": monotonicMaxExpr("last_acked_msg_seq", msgSeq),
+			"last_read_msg_seq":  monotonicMaxExpr("last_read_msg_seq", msgSeq),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return r.ensureConversationMemberExists(ctx, conversationID, userID)
 	}
 	return nil
 }
@@ -523,4 +525,26 @@ func buildSingleKey(userA, userB uint64) string {
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func monotonicMaxExpr(column string, value uint64) clause.Expr {
+	return gorm.Expr(
+		fmt.Sprintf("CASE WHEN %s < ? THEN ? ELSE %s END", column, column),
+		value,
+		value,
+	)
+}
+
+func (r *conversationRepo) ensureConversationMemberExists(ctx context.Context, conversationID, userID uint64) error {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return apperr.ConversationMemberNotFound()
+	}
+	return nil
 }

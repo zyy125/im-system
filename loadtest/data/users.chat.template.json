@@ -1,0 +1,92 @@
+[
+  {
+    "username": "chat_user_001",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_002",
+      "password": "secret123",
+      "conversation_id": 101
+    }
+  },
+  {
+    "username": "chat_user_003",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_004",
+      "password": "secret123",
+      "conversation_id": 102
+    }
+  },
+  {
+    "username": "chat_user_005",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_006",
+      "password": "secret123",
+      "conversation_id": 103
+    }
+  },
+  {
+    "username": "chat_user_007",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_008",
+      "password": "secret123",
+      "conversation_id": 104
+    }
+  },
+  {
+    "username": "chat_user_009",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_010",
+      "password": "secret123",
+      "conversation_id": 105
+    }
+  },
+  {
+    "username": "chat_user_011",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_012",
+      "password": "secret123",
+      "conversation_id": 106
+    }
+  },
+  {
+    "username": "chat_user_013",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_014",
+      "password": "secret123",
+      "conversation_id": 107
+    }
+  },
+  {
+    "username": "chat_user_015",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_016",
+      "password": "secret123",
+      "conversation_id": 108
+    }
+  },
+  {
+    "username": "chat_user_017",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_018",
+      "password": "secret123",
+      "conversation_id": 109
+    }
+  },
+  {
+    "username": "chat_user_019",
+    "password": "secret123",
+    "peer": {
+      "username": "chat_user_020",
+      "password": "secret123",
+      "conversation_id": 110
+    }
+  }
+]

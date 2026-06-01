@@ -38,6 +38,8 @@ monitor:
 
 Only `/metrics` is required for this local Prometheus stack. Keep `/debug/hub` and `pprof` disabled unless you are actively diagnosing Hub state or Go runtime performance.
 
+The local Redis and MySQL exporters run with `host` networking so they can reach host-only services bound to `127.0.0.1`.
+
 ## Start
 
 From the repo root:
@@ -94,7 +96,11 @@ docker-compose -f monitoring/docker-compose.yml down -v
 - `HTTP P95 Latency`
 - `Hub Connections`
 - `Hub Queue Lengths`
+- `Hub Queue Occupancy`
 - `Hub Pressure Signals`
+- `Hub Connection Churn`
+- `Hub Sync Recovery`
+- `Hub Bootstrap Health`
 - `DB Connection Pool`
 - `Redis Up`
 - `Redis Memory`
@@ -119,7 +125,7 @@ The local stack now configures `mysqld_exporter` with:
 If your local MySQL is not `root:123456@127.0.0.1:3306`, override them when starting the stack:
 
 ```bash
-MYSQL_EXPORTER_ADDRESS=host.docker.internal:3306 \
+MYSQL_EXPORTER_ADDRESS=127.0.0.1:3306 \
 MYSQL_EXPORTER_USER=root \
 MYSQL_EXPORTER_PASSWORD=your-password \
 docker compose -f monitoring/docker-compose.yml up -d

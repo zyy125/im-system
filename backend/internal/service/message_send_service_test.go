@@ -20,9 +20,9 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 	ctx := context.Background()
 	var savedMsg model.Message
 	var visibleUsers []uint64
-	var lastSentConversationID uint64
-	var lastSentUserID uint64
-	var lastSentSeq uint64
+	var advancedConversationID uint64
+	var advancedUserID uint64
+	var advancedSeq uint64
 
 	service := NewMessageSendService(
 		&stubMessageTxManager{
@@ -52,10 +52,10 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 					}
 					return nil
 				},
-				updateLastSentFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
-					lastSentConversationID = conversationID
-					lastSentUserID = userID
-					lastSentSeq = msgSeq
+				advanceSenderCursorsFn: func(ctx context.Context, conversationID, userID, msgSeq uint64) error {
+					advancedConversationID = conversationID
+					advancedUserID = userID
+					advancedSeq = msgSeq
 					return nil
 				},
 			},
@@ -70,9 +70,9 @@ func TestMessageSendService_SendTextMessagePersistsMessage(t *testing.T) {
 	assert.Equal(t, uint64(7), savedMsg.Seq)
 	assert.Equal(t, []uint64{9, 10}, recipients)
 	assert.Equal(t, []uint64{9, 10}, visibleUsers)
-	assert.Equal(t, uint64(12), lastSentConversationID)
-	assert.Equal(t, uint64(9), lastSentUserID)
-	assert.Equal(t, uint64(7), lastSentSeq)
+	assert.Equal(t, uint64(12), advancedConversationID)
+	assert.Equal(t, uint64(9), advancedUserID)
+	assert.Equal(t, uint64(7), advancedSeq)
 }
 
 func TestMessageSendService_SendTextMessageRejectsSingleConversationWhenNotFriends(t *testing.T) {
