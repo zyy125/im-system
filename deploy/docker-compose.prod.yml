@@ -98,7 +98,7 @@ services:
       - prometheus-data:/prometheus
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.72.1
+    image: ghcr.io/oliver006/redis_exporter:v1.72.1
     container_name: im-redis-exporter
     restart: unless-stopped
     profiles: ["monitoring"]
