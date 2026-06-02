@@ -16,10 +16,11 @@
 
 1. 准备一台 Linux 服务器，建议 `2C4G` 起步。
 2. 安装 Docker Engine 和 Docker Compose 插件。
-3. 开放公网端口：
+3. 准备好域名，并确认已经解析到当前服务器。
+4. 开放公网端口：
    - `80`：站点入口
-   - `443`：如果你后面接 TLS 终止
-4. 不建议对公网暴露：
+   - `443`：HTTPS 入口
+5. 不建议对公网暴露：
    - `3306`
    - `6379`
    - `9090`
@@ -28,43 +29,104 @@
 
 ## 首次部署
 
-1. 复制环境变量模板：
+1. 拉取代码后进入 `deploy/` 目录。
+
+2. 复制环境变量模板：
 
 ```bash
 cd deploy
 cp .env.example .env
 ```
 
-2. 复制后端生产配置：
+3. 复制后端生产配置模板：
 
 ```bash
 cp backend.config.prod.yaml.example backend.config.prod.yaml
 ```
 
-3. 修改 `backend.config.prod.yaml` 里的关键配置：
+4. 修改 `.env` 里的关键配置：
+   - `MYSQL_ROOT_PASSWORD`
+   - `MYSQL_PASSWORD`
+   - `GRAFANA_ADMIN_PASSWORD`
+   - `MYSQL_EXPORTER_PASSWORD`
+
+5. 修改 `backend.config.prod.yaml` 里的关键配置：
    - `jwt.secret`
    - `http.allowed_origins`
    - `ws.allowed_origins`
    - `mysql.dsn`
+   - `redis.addr`
 
-4. 启动核心服务：
+6. 为 `mysqld-exporter` 预留监控账号：
+   - `.env` 中的 `MYSQL_EXPORTER_USER`
+   - `.env` 中的 `MYSQL_EXPORTER_PASSWORD`
+
+## HTTPS 方案
+
+推荐直接使用 `Let's Encrypt + Nginx`。
+
+1. 先确保 `80` 端口没有被旧服务占用。
+
+2. 使用 `certbot` 签发证书：
 
 ```bash
-docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+sudo certbot certonly --standalone -d your-domain.example -m your-email@example.com --agree-tos --no-eff-email
 ```
 
-5. 如果要启动监控：
+3. `deploy/nginx.conf` 应为正式 HTTPS 版本：
+   - `80` 端口只做跳转到 HTTPS
+   - `443` 端口提供正式站点
+
+4. 叠加 TLS 覆盖文件启动：
 
 ```bash
-docker compose --env-file .env -f docker-compose.prod.yml --profile monitoring up -d
+docker compose \
+  --env-file .env \
+  -f docker-compose.prod.yml \
+  -f docker-compose.prod.tls.yml \
+  up -d --build
+```
+
+`deploy/docker-compose.prod.tls.yml` 只负责：
+
+- `443:443`
+- 把宿主机 `/etc/letsencrypt` 只读挂进 `gateway` 容器
+
+## 启动顺序
+
+建议按下面顺序启动：
+
+1. 启动核心服务：
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.prod.yml \
+  -f docker-compose.prod.tls.yml \
+  up -d --build
+```
+
+2. 验证：
+   - `https://你的域名/`
+   - `https://你的域名/healthz`
+   - 注册 / 登录 / WebSocket / 聊天链路
+
+3. 如果要启动监控，再追加 profile：
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.prod.yml \
+  -f docker-compose.prod.tls.yml \
+  --profile monitoring up -d
 ```
 
 ## 验证
 
-- 首页：`http://你的域名/`
-- 后端健康检查：`http://你的域名/healthz`
-- Prometheus：`http://127.0.0.1:9091`
-- Grafana：`http://127.0.0.1:3000`
+- 首页：`https://你的域名/`
+- 后端健康检查：`https://你的域名/healthz`
+- Prometheus：通过 SSH 隧道访问 `http://127.0.0.1:9091`
+- Grafana：通过 SSH 隧道访问 `http://127.0.0.1:3000`
 
 Grafana 账号密码从 `.env` 读取。
 建议为 `mysqld_exporter` 单独准备一个只读监控账号，并把它写到 `.env` 的：
@@ -72,63 +134,10 @@ Grafana 账号密码从 `.env` 读取。
 - `MYSQL_EXPORTER_USER`
 - `MYSQL_EXPORTER_PASSWORD`
 
-## 直接接管 80/443
-
-如果服务器上已经停掉旧站点，想让 IM 直接占用 `80/443`，推荐这样做：
-
-1. 停掉旧项目并确认端口已释放：
+SSH 隧道示例：
 
 ```bash
-cd /ubuntu/projects/my-blog
-docker compose down
-docker ps
-ss -ltnp | grep -E ':80|:443'
-```
-
-2. 把项目放到新目录，例如：
-
-```bash
-mkdir -p /ubuntu/projects/im-system
-```
-
-3. 在 `deploy/` 目录准备生产配置：
-
-```bash
-cp .env.example .env
-cp backend.config.prod.yaml.example backend.config.prod.yaml
-```
-
-4. 修改 `backend.config.prod.yaml`：
-   - `jwt.secret` 改成强随机值
-   - `http.allowed_origins` 改成你的正式域名
-   - `ws.allowed_origins` 改成你的正式域名
-   - `mysql.dsn` 中的数据库密码与 `.env` 保持一致
-
-5. 如果你暂时只想先跑通 HTTP，直接启动：
-
-```bash
-docker compose --env-file .env -f docker-compose.prod.yml up -d --build
-```
-
-6. 如果你要直接复用容器内 Nginx 做 HTTPS：
-   - 把 [nginx.tls.conf.example](/home/zhuyin/im-system/deploy/nginx.tls.conf.example:1) 复制为 `deploy/nginx.conf`
-   - 把里面的域名和证书路径改成你自己的
-   - 把证书目录挂到 `deploy/certs`
-   - 再叠加 TLS override 启动：
-
-```bash
-docker compose \
-  --env-file .env \
-  -f docker-compose.prod.yml \
-  -f docker-compose.prod.tls.yml.example \
-  up -d --build
-```
-
-7. 启动后检查：
-
-```bash
-docker compose -f docker-compose.prod.yml ps
-curl -I http://127.0.0.1/healthz
+ssh -L 3000:127.0.0.1:3000 -L 9091:127.0.0.1:9091 your-user@your-server
 ```
 
 ## 升级流程
@@ -136,7 +145,11 @@ curl -I http://127.0.0.1/healthz
 ```bash
 git pull
 cd deploy
-docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+docker compose \
+  --env-file .env \
+  -f docker-compose.prod.yml \
+  -f docker-compose.prod.tls.yml \
+  up -d --build
 ```
 
 ## 回滚建议
@@ -150,6 +163,7 @@ docker compose --env-file .env -f docker-compose.prod.yml up -d --build
 - 线上建议只让 `prometheus`、`grafana` 监听 `127.0.0.1`
 - `debug/hub` 建议默认关闭，需要排查 WebSocket Hub 状态时再临时打开
 - `pprof` 默认关闭，避免直接暴露性能分析接口
+- 如果 `gateway` 业务已通但容器状态显示 `unhealthy`，优先检查 healthcheck 是否和 HTTPS / 证书校验策略匹配
 - 通过现有仪表盘重点看：
   - HTTP QPS
   - HTTP P95 延迟
