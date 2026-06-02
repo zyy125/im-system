@@ -32,3 +32,6 @@ loadtest/data/users.chat.json
 
 monitoring/.env
 monitoring/data/
+
+deploy/backend.config.prod.yaml
+deploy/certs/
