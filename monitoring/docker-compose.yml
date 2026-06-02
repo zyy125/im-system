@@ -17,7 +17,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.72.0
+    image: oliver006/redis_exporter:v1.72.1
     container_name: im-redis-exporter
     restart: unless-stopped
     network_mode: host
