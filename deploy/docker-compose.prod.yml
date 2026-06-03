@@ -3,9 +3,6 @@ services:
     image: mysql:8.4
     container_name: im-mysql
     restart: unless-stopped
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -13,6 +10,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql.prod.cnf:/etc/mysql/conf.d/zzz-im.cnf:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -23,9 +21,10 @@ services:
     image: redis:7.4-alpine
     container_name: im-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     volumes:
       - redis-data:/data
+      - ./redis.prod.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -44,6 +43,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    environment:
+      IM_JWT_SECRET: ${IM_JWT_SECRET}
+      IM_MYSQL_DSN: ${IM_MYSQL_DSN}
+      IM_REDIS_PASSWORD: ${IM_REDIS_PASSWORD:-}
     volumes:
       - ./backend.config.prod.yaml:/app/config/config.yaml:ro
       - avatar-data:/app/storage/avatars

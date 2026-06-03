@@ -63,7 +63,7 @@ func (a *App) Start(ctx context.Context) error {
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- err
 				return
-			}	
+			}
 			errCh <- nil
 		}()
 	}
@@ -126,7 +126,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func InitApp(cfg *config.Config, ctx context.Context) (*App, error) {
-	db, err := infra.NewMySQL(cfg.Mysql.DSN)
+	db, err := infra.NewMySQL(cfg.Mysql)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func InitApp(cfg *config.Config, ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	rdb, err := infra.NewRedisClient(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+	rdb, err := infra.NewRedisClient(ctx, cfg.Redis)
 	if err != nil {
 		return nil, err
 	}

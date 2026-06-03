@@ -4,15 +4,15 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/zyy125/im-system/config"
 )
 
-func NewRedisClient(ctx context.Context, addr, password string, db int) (*redis.Client, error) {
+func NewRedisClient(ctx context.Context, cfg config.Redis) (*redis.Client, error) {
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         addr,
-		Password:     password,
-		DB:           db,
-		PoolSize:     10,
-		MinIdleConns: 5,
+		Addr:     cfg.Addr,
+		Password: cfg.Password,
+		DB:       cfg.DB,
+		PoolSize: cfg.PoolSize,
 	})
 
 	if err := rdb.Ping(ctx).Err(); err != nil {

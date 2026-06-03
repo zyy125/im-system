@@ -44,22 +44,42 @@ cp .env.example .env
 cp backend.config.prod.yaml.example backend.config.prod.yaml
 ```
 
-4. 修改 `.env` 里的关键配置：
+4. 复制 MySQL 与 Redis 生产配置模板：
+
+```bash
+cp mysql.prod.cnf.example mysql.prod.cnf
+cp redis.prod.conf.example redis.prod.conf
+```
+
+5. 修改 `.env` 里的关键配置：
    - `MYSQL_ROOT_PASSWORD`
    - `MYSQL_PASSWORD`
+   - `IM_JWT_SECRET`
+   - `IM_MYSQL_DSN`
    - `GRAFANA_ADMIN_PASSWORD`
    - `MYSQL_EXPORTER_PASSWORD`
 
-5. 修改 `backend.config.prod.yaml` 里的关键配置：
-   - `jwt.secret`
+6. 修改 `backend.config.prod.yaml` 里的关键配置：
    - `http.allowed_origins`
    - `ws.allowed_origins`
-   - `mysql.dsn`
    - `redis.addr`
+   - `mysql.max_open_conns`
+   - `redis.pool_size`
 
-6. 为 `mysqld-exporter` 预留监控账号：
+7. 按机器规格调整 `mysql.prod.cnf` 和 `redis.prod.conf`：
+   - `mysql.prod.cnf` 负责 MySQL 服务端参数，例如连接上限、InnoDB buffer pool、慢查询日志
+   - `redis.prod.conf` 负责 Redis 服务端参数，例如持久化、最大内存、淘汰策略
+
+8. 为 `mysqld-exporter` 预留监控账号：
    - `.env` 中的 `MYSQL_EXPORTER_USER`
    - `.env` 中的 `MYSQL_EXPORTER_PASSWORD`
+
+## 配置边界
+
+- `backend.config.prod.yaml`：后端应用的非敏感配置，例如端口、监控开关、允许来源、MySQL/Redis 客户端连接池参数
+- `.env`：敏感值与环境覆盖项，例如 JWT 密钥、MySQL DSN、Redis 密码
+- `mysql.prod.cnf`：MySQL 服务端实例参数
+- `redis.prod.conf`：Redis 服务端实例参数
 
 ## HTTPS 方案
 

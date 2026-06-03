@@ -1,8 +1,0 @@
-services:
-  gateway:
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./certs:/etc/letsencrypt:ro
-

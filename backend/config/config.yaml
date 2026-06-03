@@ -26,9 +26,13 @@ redis:
   addr: "localhost:6379"
   password: ""
   db: 0
+  pool_size: 10
 
 mysql:
   dsn: "root:123456@tcp(localhost:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
+  max_open_conns: 20
+  max_idle_conns: 5
+  conn_max_lifetime: "30m"
 
 ws:
   allowed_origins:

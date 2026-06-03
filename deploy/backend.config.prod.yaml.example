@@ -1,6 +1,6 @@
 # JWT signing
 jwt:
-  secret: "replace-with-a-32-char-random-secret"
+  secret: ""
   access_expiry: 2
   refresh_expiry: 720
 
@@ -31,10 +31,14 @@ redis:
   addr: "redis:6379"
   password: ""
   db: 0
+  pool_size: 32
 
 # MySQL business connection used by backend
 mysql:
-  dsn: "im_user:change-this-db-password@tcp(mysql:3306)/im_system?charset=utf8mb4&parseTime=True&loc=Local"
+  dsn: ""
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime: "1h"
 
 # Browser origins allowed for WebSocket handshake
 ws:

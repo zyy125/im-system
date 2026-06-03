@@ -34,4 +34,6 @@ monitoring/.env
 monitoring/data/
 
 deploy/backend.config.prod.yaml
+deploy/mysql.prod.cnf
+deploy/redis.prod.conf
 deploy/certs/

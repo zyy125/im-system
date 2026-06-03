@@ -47,7 +47,10 @@ type Storage struct {
 
 // Mysql 保存 MySQL 连接串。
 type Mysql struct {
-	DSN string `mapstructure:"dsn"`
+	DSN             string        `mapstructure:"dsn"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
 // Redis 保存 Redis 连接信息，用于在线状态、序列号、消息缓存等。
@@ -55,6 +58,7 @@ type Redis struct {
 	Addr     string `mapstructure:"addr"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
+	PoolSize int    `mapstructure:"pool_size"`
 }
 
 // JWT 保存签名密钥和 access/refresh token 的有效期（小时）。
@@ -117,8 +121,35 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Mysql.DSN) == "" {
 		return errors.New("mysql.dsn is required")
 	}
+	if c.Mysql.MaxOpenConns < 0 {
+		return errors.New("mysql.max_open_conns must be greater than 0")
+	}
+	if c.Mysql.MaxOpenConns == 0 {
+		c.Mysql.MaxOpenConns = 50
+	}
+	if c.Mysql.MaxIdleConns < 0 {
+		return errors.New("mysql.max_idle_conns must be greater than or equal to 0")
+	}
+	if c.Mysql.MaxIdleConns == 0 {
+		c.Mysql.MaxIdleConns = 10
+	}
+	if c.Mysql.ConnMaxLifetime < 0 {
+		return errors.New("mysql.conn_max_lifetime must be greater than 0")
+	}
+	if c.Mysql.ConnMaxLifetime == 0 {
+		c.Mysql.ConnMaxLifetime = time.Hour
+	}
+	if c.Mysql.MaxIdleConns > c.Mysql.MaxOpenConns {
+		return errors.New("mysql.max_idle_conns must be less than or equal to mysql.max_open_conns")
+	}
 	if strings.TrimSpace(c.Redis.Addr) == "" {
 		return errors.New("redis.addr is required")
+	}
+	if c.Redis.PoolSize < 0 {
+		return errors.New("redis.pool_size must be greater than 0")
+	}
+	if c.Redis.PoolSize == 0 {
+		c.Redis.PoolSize = 10
 	}
 	if strings.TrimSpace(c.JWT.Secret) == "" {
 		return errors.New("jwt.secret is required")
