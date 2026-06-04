@@ -1,75 +1,88 @@
 # IM System
 
-一个基于 `Go + Gin + React + WebSocket + MySQL + Redis` 的单体即时通讯项目，支持注册登录、单聊实时消息、群聊、头像上传、在线状态、监控与压测。
+`IM System` 是一个基于 `Go + Gin + React + WebSocket + MySQL + Redis` 的单体即时通讯项目。
 
-## Features
+当前版本采用单机架构，覆盖实时消息链路、会话游标设计、离线补推、监控、压测和部署相关能力。
 
-- 用户注册、登录、刷新令牌、登出
-- 单聊实时消息与已读/送达状态
-- 群聊创建、改名、邀请、移除成员、退出、解散
-- 用户头像上传与静态资源托管
-- 在线状态与好友列表
-- Prometheus + Grafana 监控
-- k6 登录、会话列表、WebSocket 建连、单聊与混合流量压测
+## 总体架构
 
-## Stack
+[![IM System Overall Architecture](./docs/images/image.png)](./docs/images/image.png)
 
-- Backend: Go, Gin, GORM, JWT, WebSocket
+## 能力范围
+
+- 支持注册登录、好友关系、单聊、群聊、头像上传、在线状态
+- WebSocket 实时消息链路和 HTTP 补洞链路分离
+- 用 `msg_id` 保证发送幂等，用会话内 `seq` 统一历史、同步、ACK、已读
+- 基于 `conversation_members` 建模成员可见性、送达游标、已读游标
+- 提供 Prometheus + Grafana 监控和 k6 压测脚本
+- 提供 `Docker Compose + Nginx + MySQL + Redis` 的单机部署方案
+
+## 技术栈
+
+- Backend: Go, Gin, GORM, JWT, Gorilla WebSocket
 - Frontend: React, TypeScript, Vite
 - Storage: MySQL, Redis
 - Deploy: Docker Compose, Nginx, Let's Encrypt
-- Observability: Prometheus, Grafana, mysqld-exporter, redis_exporter
+- Observability: Prometheus, Grafana, mysqld-exporter, redis-exporter
 - Load Test: k6
 
-## Project Layout
+## 文档索引
 
-- `backend/`: 后端业务代码与开发配置
-- `frontend/`: 前端应用代码
-- `deploy/`: 生产部署入口与生产配置模板
-- `monitoring/`: Grafana dashboards、本地监控栈与监控资源
-- `loadtest/`: k6 压测脚本、模板数据与压测说明
+项目级文档：
 
-## Deploy
+- [docs/architecture.md](./docs/architecture.md)
+- [docs/database-design.md](./docs/database-design.md)
+- [docs/websocket-flow.md](./docs/websocket-flow.md)
+- [docs/performance-test.md](./docs/performance-test.md)
+- [docs/monitoring.md](./docs/monitoring.md)
 
-生产部署入口在 [deploy/README.md](/home/zhuyin/im-system/deploy/README.md:1)。
+后端协议文档：
 
-当前部署思路：
+- [backend/docs/ws-protocol.md](./backend/docs/ws-protocol.md)
+- [backend/docs/error-codes.md](./backend/docs/error-codes.md)
 
-- 单机 Linux 服务器
-- `Docker Compose + Nginx + MySQL + Redis`
-- 前后端同域部署
-- HTTPS 由项目内 `gateway` 容器处理
-- Prometheus / Grafana 仅监听 `127.0.0.1`，通过 SSH 隧道访问
+## 已实现能力
 
-## Monitoring
+- 认证
+  注册、登录、刷新令牌、登出
+- 关系链
+  好友申请、好友列表、删除好友
+- 会话
+  单聊会话、群聊创建、改名、邀请、移除成员、退出、解散
+- 消息
+  WebSocket 实时消息、离线补推、历史消息、按 `seq` 补洞同步
+- 用户
+  个人信息、头像上传、在线状态
+- 工程化
+  Swagger、监控面板、告警规则、压测脚本、部署模板
 
-监控资源位于：
+## 仓库结构
 
-- `deploy/prometheus.prod.yml`
-- `deploy/prometheus.rules.prod.yml`
-- `monitoring/grafana/dashboards/`
+- `backend/`
+  后端服务、业务逻辑、Swagger、协议文档
+- `frontend/`
+  前端应用
+- `deploy/`
+  生产部署入口和配置模板
+- `loadtest/`
+  k6 压测脚本和结果
+- `monitoring/`
+  Prometheus 和 Grafana 监控资源
+- `docs/`
+  项目级设计文档与架构说明
 
-线上推荐通过 SSH 隧道访问：
+## 相关入口
 
-- Grafana: `http://127.0.0.1:3000`
-- Prometheus: `http://127.0.0.1:9091`
+- 部署说明见 [deploy/README.md](./deploy/README.md)
+- 压测结果见 [loadtest/loadtest-report-2026-06-03.md](./loadtest/loadtest-report-2026-06-03.md)
+- 监控资源在 `monitoring/`
 
-## Load Testing
+## 当前架构边界
 
-压测脚本位于 `loadtest/`，详细说明见 [loadtest/README.md](/home/zhuyin/im-system/loadtest/README.md:1)。
+当前版本采用单体架构，边界如下：
 
-常见场景：
+- WebSocket Hub 仍是单进程内存模型
+- MySQL 和 Redis 当前按单机部署设计
+- 会话列表摘要聚合是当前最先需要继续优化的链路
 
-- `http-login.js`: 登录接口压力
-- `http-conversation-list.js`: 会话列表读取压力
-- `ws-connect.js`: WebSocket 在线连接压力
-- `ws-chat-single.js`: 单聊实时消息链路
-- `mixed-dev.js`: 长连接 + HTTP + 聊天混合流量
-
-## Notes
-
-- 仓库保留部署模板与压测模板，不保留真实生产配置和真实压测账号数据。
-- 开发环境通常使用 `go run` 读取 `backend/config/config.yaml`。
-- 生产环境通过 `deploy/docker-compose.prod.yml` 启动，并读取服务器本地的：
-  - `deploy/.env`
-  - `deploy/backend.config.prod.yaml`
+当规模继续增长时，可进一步演进到多实例部署和更明确的读写分离模型。
