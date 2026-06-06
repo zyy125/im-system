@@ -1,7 +1,8 @@
-import { sleep } from 'k6';
+import exec from 'k6/execution';
+import { Counter } from 'k6/metrics';
 import { uuidv4 as randomUUID } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
-import { config, ensureDedicatedChatPairs, envNumber, pickUserByVU, requirePair } from '../config.js';
-import { loginCached } from '../lib/auth.js';
+import { config, ensureDedicatedChatPairs, envNumber, requirePair } from '../config.js';
+import { login } from '../lib/auth.js';
 import { apiGet, apiPost, expectOK } from '../lib/http.js';
 import {
   closeSocket,
@@ -19,13 +20,80 @@ import {
   wsSyncRequired,
 } from '../lib/ws.js';
 
+const configuredChatVUs = envNumber('CHAT_VUS', 8);
+const configuredTotalConnections = envNumber('TOTAL_CONNECTIONS', configuredChatVUs * 2);
+const configuredIdleWsVUs = Math.max(0, configuredTotalConnections - configuredChatVUs * 2);
+const configuredRampUp = __ENV.RAMP_UP || '30s';
+const configuredHold = __ENV.HOLD || '2m';
+const configuredRampDown = __ENV.RAMP_DOWN || '15s';
+const configuredDuration = __ENV.DURATION || '3m';
+const configuredSocketLifetimeMs = envNumber('SOCKET_LIFETIME_MS', 20000);
+const configuredIdleSocketLifetimeSeconds = envNumber('IDLE_SOCKET_LIFETIME_SECONDS', 60);
+const configuredMessagesPerSession = Math.max(1, envNumber('CHAT_MESSAGES_PER_SESSION', 5));
+
 const openedConversationCache = new Map();
+const mixedChatFlowFailure = new Counter('mixed_chat_flow_failure_total');
+
+function buildIdleUsers(pairs, reservedPairCount) {
+  const reserved = new Set();
+  for (let i = 0; i < reservedPairCount; i += 1) {
+    const pair = requirePair(pairs[i]);
+    reserved.add(pair.username);
+    reserved.add(pair.peer.username);
+  }
+
+  const seen = new Set();
+  const idleUsers = [];
+  for (const pair of pairs) {
+    const candidates = [
+      { username: pair.username, password: pair.password },
+      { username: pair.peer.username, password: pair.peer.password },
+    ];
+    for (const candidate of candidates) {
+      if (!candidate.username || reserved.has(candidate.username) || seen.has(candidate.username)) {
+        continue;
+      }
+      seen.add(candidate.username);
+      idleUsers.push(candidate);
+    }
+  }
+
+  return idleUsers;
+}
+
+const idleUsers = buildIdleUsers(config.users, configuredChatVUs);
+
+function indexByUsername(users) {
+  const result = new Map();
+  for (const user of users) {
+    result.set(user.username, user);
+    if (user.peer?.username) {
+      result.set(user.peer.username, {
+        username: user.peer.username,
+        password: user.peer.password,
+      });
+    }
+  }
+  return result;
+}
+
+const userByUsername = indexByUsername(config.users);
+
+function chatUserByVU() {
+  const index = (exec.vu.idInTest - 1) % configuredChatVUs;
+  return requirePair(config.users[index]);
+}
+
+function idleUserByVU() {
+  const index = (exec.vu.idInTest - 1) % idleUsers.length;
+  return idleUsers[index];
+}
 
 function openConversation(token, conversationId) {
   return expectOK(
     'open-conversation',
     apiPost(`/api/v1/conversations/${conversationId}/open`, token, null, {
-      tags: { scenario_group: 'mixed', endpoint: 'conversation_open' },
+      tags: { scenario_group: 'mixed_connections', endpoint: 'conversation_open' },
     }),
   );
 }
@@ -47,73 +115,96 @@ function syncConversation(token, conversationId, afterSeq) {
   return expectOK(
     'message-sync',
     apiGet(`/api/v1/messages/sync?conversation_id=${conversationId}&after_seq=${afterSeq}`, token, {
-      tags: { scenario_group: 'mixed', endpoint: 'message_sync' },
+      tags: { scenario_group: 'mixed_connections', endpoint: 'message_sync' },
     }),
   );
 }
 
-function everyNIterations(n) {
-  const interval = Math.max(1, n);
-  return (__ITER - 1) % interval === 0;
-}
-
 export const options = {
+  setupTimeout: __ENV.SETUP_TIMEOUT || '10m',
   scenarios: {
     idle_ws: {
       executor: 'ramping-vus',
       exec: 'idleWs',
       startVUs: 0,
       stages: [
-        { duration: __ENV.RAMP_UP || '30s', target: envNumber('IDLE_WS_VUS', 30) },
-        { duration: __ENV.HOLD || '2m', target: envNumber('IDLE_WS_VUS', 30) },
-        { duration: __ENV.RAMP_DOWN || '15s', target: 0 },
+        { duration: configuredRampUp, target: configuredIdleWsVUs },
+        { duration: configuredHold, target: configuredIdleWsVUs },
+        { duration: configuredRampDown, target: 0 },
       ],
       gracefulRampDown: '5s',
-    },
-    conversation_poll: {
-      executor: 'constant-vus',
-      exec: 'conversationPoll',
-      vus: envNumber('HTTP_VUS', 5),
-      duration: __ENV.DURATION || '3m',
     },
     ws_chat_flow: {
       executor: 'ramping-vus',
       exec: 'wsChatFlow',
       startVUs: 0,
       stages: [
-        { duration: __ENV.RAMP_UP || '30s', target: envNumber('CHAT_VUS', 8) },
-        { duration: __ENV.HOLD || '2m', target: envNumber('CHAT_VUS', 8) },
-        { duration: __ENV.RAMP_DOWN || '15s', target: 0 },
+        { duration: configuredRampUp, target: configuredChatVUs },
+        { duration: configuredHold, target: configuredChatVUs },
+        { duration: configuredRampDown, target: 0 },
       ],
       gracefulRampDown: '5s',
     },
   },
   thresholds: {
     ...config.thresholds,
-    ws_connect_failure_total: ['count==0'],
     ws_error_events_total: ['count==0'],
     ws_sync_required_total: ['count<5'],
-    ws_message_sent_ack_total: [`count>=${envNumber('CHAT_VUS', 8) * 0.9}`],
-    ws_message_created_total: [`count>=${envNumber('CHAT_VUS', 8) * 0.9}`],
-    ws_message_read_total: [`count>=${envNumber('CHAT_VUS', 8) * 0.9}`],
+    mixed_chat_flow_failure_total: ['count==0'],
+    ws_message_sent_ack_total: [`count>=${configuredChatVUs * 0.9}`],
+    ws_message_created_total: [`count>=${configuredChatVUs * 0.9}`],
+    ws_message_read_total: [`count>=${configuredChatVUs * 0.9}`],
     ws_message_round_trip_ms: ['p(95)<1500'],
   },
 };
 
 export function setup() {
-  ensureDedicatedChatPairs(envNumber('CHAT_VUS', 8), 'mixed-dev');
-  return null;
+  if (configuredTotalConnections < configuredChatVUs * 2) {
+    throw new Error('TOTAL_CONNECTIONS must be at least CHAT_VUS * 2');
+  }
+  ensureDedicatedChatPairs(configuredChatVUs, 'mixed-dev');
+  if (configuredIdleWsVUs > idleUsers.length) {
+    throw new Error(
+      `TOTAL_CONNECTIONS=${configuredTotalConnections} with CHAT_VUS=${configuredChatVUs} requires ${configuredIdleWsVUs} dedicated idle users, but only ${idleUsers.length} are available`,
+    );
+  }
+
+  const tokenByUsername = {};
+  const requiredUsernames = new Set();
+
+  for (let i = 0; i < configuredChatVUs; i += 1) {
+    const pair = requirePair(config.users[i]);
+    requiredUsernames.add(pair.username);
+    requiredUsernames.add(pair.peer.username);
+  }
+
+  for (let i = 0; i < configuredIdleWsVUs; i += 1) {
+    requiredUsernames.add(idleUsers[i].username);
+  }
+
+  for (const username of requiredUsernames) {
+    const user = userByUsername.get(username);
+    if (!user) {
+      throw new Error(`missing user config for username=${username}`);
+    }
+    const tokens = login(user.username, user.password);
+    tokenByUsername[username] = tokens.access_token;
+  }
+
+  return {
+    tokenByUsername,
+  };
 }
 
-export function idleWs() {
-  const user = pickUserByVU();
-  const tokens = loginCached(user.username, user.password);
-  const socket = connect(tokens.access_token, {
-    tags: { scenario_group: 'mixed', endpoint: 'idle_ws' },
+export function idleWs(data) {
+  const user = idleUserByVU();
+  const token = data.tokenByUsername[user.username];
+  const socket = connect(token, {
+    tags: { scenario_group: 'mixed_connections', endpoint: 'idle_ws' },
   });
   const timeoutId = setTimeout(() => {
     closeSocket(socket);
-  }, envNumber('IDLE_SOCKET_LIFETIME_SECONDS', 60) * 1000);
+  }, configuredIdleSocketLifetimeSeconds * 1000);
 
   let opened = false;
   let failureRecorded = false;
@@ -141,9 +232,7 @@ export function idleWs() {
       wsErrors.add(1);
     }
   });
-  socket.addEventListener('error', () => {
-    recordFailure();
-  });
+  socket.addEventListener('error', recordFailure);
   socket.addEventListener('close', () => {
     clearTimeout(timeoutId);
     if (!opened) {
@@ -152,58 +241,28 @@ export function idleWs() {
   });
 }
 
-export function conversationPoll() {
-  const user = pickUserByVU();
-  const tokens = loginCached(user.username, user.password);
-  const token = tokens.access_token;
-  const conversationPollEvery = envNumber('HTTP_POLL_EVERY', 3);
-  const groupPollEvery = envNumber('HTTP_GROUP_POLL_EVERY', 6);
-
-  if (!everyNIterations(conversationPollEvery)) {
-    sleep(envNumber('HTTP_SLEEP_SECONDS', 2));
-    return;
-  }
-
-  expectOK(
-    'conversation-list',
-    apiGet('/api/v1/conversations', token, {
-      tags: { scenario_group: 'mixed', endpoint: 'conversation_list' },
-    }),
-  );
-
-  if (everyNIterations(groupPollEvery)) {
-    expectOK(
-      'group-list',
-      apiGet('/api/v1/conversations/groups', token, {
-        tags: { scenario_group: 'mixed', endpoint: 'group_list' },
-      }),
-    );
-  }
-
-  sleep(envNumber('HTTP_SLEEP_SECONDS', 2));
-}
-
-export function wsChatFlow() {
-  const user = requirePair(pickUserByVU());
-  const selfTokens = loginCached(user.username, user.password);
-  const peerTokens = loginCached(user.peer.username, user.peer.password);
+export function wsChatFlow(data) {
+  const user = chatUserByVU();
+  const selfToken = data.tokenByUsername[user.username];
+  const peerToken = data.tokenByUsername[user.peer.username];
   const conversationId = user.peer.conversation_id || user.conversation_id;
-  const burstSize = Math.max(1, envNumber('CHAT_MESSAGES_PER_SESSION', 5));
-  const socketLifetimeMs = envNumber('SOCKET_LIFETIME_MS', 20000);
 
   if (!conversationId) {
     throw new Error('mixed-dev requires conversation_id in test user data');
   }
 
-  ensureConversationOpen(selfTokens.access_token, conversationId);
-  ensureConversationOpen(peerTokens.access_token, conversationId);
+  if (!selfToken || !peerToken) {
+    throw new Error('missing preloaded access token for chat flow');
+  }
+
+  ensureConversationOpen(selfToken, conversationId);
+  ensureConversationOpen(peerToken, conversationId);
 
   const state = {
     selfOpen: false,
     peerOpen: false,
     sending: false,
     pendingMsgId: '',
-    pendingText: '',
     pendingSeq: 0,
     sentAcked: false,
     createdSeen: false,
@@ -213,11 +272,11 @@ export function wsChatFlow() {
   };
   const startedAt = Date.now();
 
-  const selfSocket = connect(selfTokens.access_token, {
-    tags: { scenario_group: 'mixed', endpoint: 'chat_self_ws' },
+  const selfSocket = connect(selfToken, {
+    tags: { scenario_group: 'mixed_connections', endpoint: 'chat_self_ws' },
   });
-  const peerSocket = connect(peerTokens.access_token, {
-    tags: { scenario_group: 'mixed', endpoint: 'chat_peer_ws' },
+  const peerSocket = connect(peerToken, {
+    tags: { scenario_group: 'mixed_connections', endpoint: 'chat_peer_ws' },
   });
   let timeoutId = null;
 
@@ -243,7 +302,7 @@ export function wsChatFlow() {
     if (state.done) {
       return;
     }
-    wsConnectFailure.add(1);
+    mixedChatFlowFailure.add(1);
     state.done = true;
     clearScenarioTimeout();
     closeSocket(selfSocket, 4000, 'scenario_failed');
@@ -254,14 +313,13 @@ export function wsChatFlow() {
     if (state.done || state.sending || !state.selfOpen || !state.peerOpen) {
       return;
     }
-    if (state.messagesCompleted >= burstSize) {
+    if (state.messagesCompleted >= configuredMessagesPerSession) {
       complete();
       return;
     }
 
     const msgId = randomUUID();
     state.pendingMsgId = msgId;
-    state.pendingText = `mixed-${msgId}`;
     state.pendingSeq = 0;
     state.sentAcked = false;
     state.createdSeen = false;
@@ -271,7 +329,7 @@ export function wsChatFlow() {
     sendEnvelope(selfSocket, 'message.send', {
       msg_id: msgId,
       conversation_id: conversationId,
-      content: state.pendingText,
+      content: `mixed-${msgId}`,
     });
     wsMessageSent.add(1);
   }
@@ -284,10 +342,9 @@ export function wsChatFlow() {
     state.messagesCompleted += 1;
     state.sending = false;
     state.pendingMsgId = '';
-    state.pendingText = '';
     state.pendingSeq = 0;
 
-    if (state.messagesCompleted >= burstSize) {
+    if (state.messagesCompleted >= configuredMessagesPerSession) {
       complete();
       return;
     }
@@ -295,7 +352,7 @@ export function wsChatFlow() {
     startNextMessage();
   }
 
-  timeoutId = setTimeout(fail, socketLifetimeMs);
+  timeoutId = setTimeout(fail, configuredSocketLifetimeMs);
 
   selfSocket.addEventListener('open', () => {
     state.selfOpen = true;
@@ -322,7 +379,7 @@ export function wsChatFlow() {
       }
     } else if (env.type === 'sync.required') {
       wsSyncRequired.add(1);
-      syncConversation(selfTokens.access_token, conversationId, state.pendingSeq);
+      syncConversation(selfToken, conversationId, state.pendingSeq);
     } else if (env.type === 'error') {
       wsErrors.add(1);
       fail();
@@ -345,6 +402,7 @@ export function wsChatFlow() {
     if (!env || !env.type) {
       return;
     }
+
     if (env.type === 'message.created' && env.data?.msg_id === state.pendingMsgId) {
       if (!state.createdSeen) {
         state.createdSeen = true;
@@ -362,7 +420,7 @@ export function wsChatFlow() {
       }
     } else if (env.type === 'sync.required') {
       wsSyncRequired.add(1);
-      syncConversation(peerTokens.access_token, conversationId, state.pendingSeq);
+      syncConversation(peerToken, conversationId, state.pendingSeq);
     } else if (env.type === 'error') {
       wsErrors.add(1);
       fail();

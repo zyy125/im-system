@@ -137,18 +137,3 @@ func (l *clientLifecycle) broadcastPresence(ctx context.Context, userID uint64, 
 	}
 }
 
-func collectOfflineSenderIDs(msgs []model.Message) []uint64 {
-	ids := make([]uint64, 0, len(msgs))
-	seen := make(map[uint64]struct{}, len(msgs))
-	for _, msg := range msgs {
-		if msg.From == 0 {
-			continue
-		}
-		if _, ok := seen[msg.From]; ok {
-			continue
-		}
-		seen[msg.From] = struct{}{}
-		ids = append(ids, msg.From)
-	}
-	return ids
-}

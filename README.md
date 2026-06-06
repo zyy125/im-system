@@ -74,7 +74,7 @@
 ## 相关入口
 
 - 部署说明见 [deploy/README.md](./deploy/README.md)
-- 压测结果见 [loadtest/loadtest-report-2026-06-03.md](./loadtest/loadtest-report-2026-06-03.md)
+- 压测汇总见 [docs/performance-test.md](./docs/performance-test.md)
 - 监控资源在 `monitoring/`
 
 ## 当前架构边界
